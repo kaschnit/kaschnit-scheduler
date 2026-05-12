@@ -2,23 +2,24 @@ package quotaawarepreempt
 
 import (
 	"github.com/kaschnit/custom-scheduler/internal/fwkutil"
+	"github.com/kaschnit/custom-scheduler/quotaawarepreempt/queue"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
 const stateKeyPreFilter fwk.StateKey = "PreFilter" + PluginName
 
-var _ fwk.StateData = (*PreFilterState)(nil)
+var _ fwk.StateData = (*RequstedResourceState)(nil)
 
-// QuotaUsageSnapshotState is shared scheduling state related to the prefilter point.
-type PreFilterState struct {
+// RequstedResourceState is shared scheduling state related to requested resources.
+type RequstedResourceState struct {
 	request             framework.Resource
 	nominatedReqInQuota framework.Resource
 }
 
 // Clone implements [fwk.StateData].
-func (s *PreFilterState) Clone() fwk.StateData {
-	return &PreFilterState{
+func (s *RequstedResourceState) Clone() fwk.StateData {
+	return &RequstedResourceState{
 		request:             *s.request.Clone(),
 		nominatedReqInQuota: *s.nominatedReqInQuota.Clone(),
 	}
@@ -26,17 +27,17 @@ func (s *PreFilterState) Clone() fwk.StateData {
 
 const stateKeyQuotaSnapshot fwk.StateKey = "QuotaSnapshot" + PluginName
 
-var _ fwk.StateData = (*QuotaUsageSnapshotState)(nil)
+var _ fwk.StateData = (*QuotaSnapshotState)(nil)
 
-// QuotaUsageSnapshotState is shared scheduling state related to quota usage.
-type QuotaUsageSnapshotState struct {
-	quotaUsages QuotaUsages
+// QuotaSnapshotState is shared scheduling state related to quota usage.
+type QuotaSnapshotState struct {
+	QuotaMgr *queue.QuotaManager
 }
 
 // Clone implements [fwk.StateData].
-func (s *QuotaUsageSnapshotState) Clone() fwk.StateData {
-	return &QuotaUsageSnapshotState{
-		quotaUsages: s.quotaUsages.clone(),
+func (s *QuotaSnapshotState) Clone() fwk.StateData {
+	return &QuotaSnapshotState{
+		QuotaMgr: s.QuotaMgr.Clone(),
 	}
 }
 
@@ -52,22 +53,22 @@ func NewStateManager(cycleState fwk.CycleState) *StateManager {
 	}
 }
 
-// ReadPreFilter reads the prefilter data from the scheduling cycle state.
-func (mgr *StateManager) ReadPreFilter() (*PreFilterState, error) {
-	return fwkutil.ReadState[*PreFilterState](mgr.cycleState, stateKeyPreFilter)
+// ReadRequstedResource reads the requested resource data from the scheduling cycle state.
+func (mgr *StateManager) ReadRequstedResource() (*RequstedResourceState, error) {
+	return fwkutil.ReadState[*RequstedResourceState](mgr.cycleState, stateKeyPreFilter)
 }
 
-// WritePreFilter writes the prefilter data to the scheduling cycle state.
-func (mgr *StateManager) WritePreFilter(data *PreFilterState) {
+// WriteRequestedResource writes the requested resource data to the scheduling cycle state.
+func (mgr *StateManager) WriteRequestedResource(data *RequstedResourceState) {
 	mgr.cycleState.Write(stateKeyPreFilter, data)
 }
 
-// ReadQuotaUsageSnapshot reads the quota usage snapshot data from the scheduling cycle state.
-func (mgr *StateManager) ReadQuotaUsageSnapshot() (*QuotaUsageSnapshotState, error) {
-	return fwkutil.ReadState[*QuotaUsageSnapshotState](mgr.cycleState, stateKeyQuotaSnapshot)
+// ReadQuotaSnapshot reads the quota usage snapshot data from the scheduling cycle state.
+func (mgr *StateManager) ReadQuotaSnapshot() (*QuotaSnapshotState, error) {
+	return fwkutil.ReadState[*QuotaSnapshotState](mgr.cycleState, stateKeyQuotaSnapshot)
 }
 
-// WriteQuotaUsageSnapshot writes the quota usage snapshot data to the scheduling cycle state.
-func (mgr *StateManager) WriteQuotaUsageSnapshot(data *QuotaUsageSnapshotState) {
+// WriteQuotaSnapshot writes the quota usage snapshot data to the scheduling cycle state.
+func (mgr *StateManager) WriteQuotaSnapshot(data *QuotaSnapshotState) {
 	mgr.cycleState.Write(stateKeyQuotaSnapshot, data)
 }

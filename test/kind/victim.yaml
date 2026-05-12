@@ -3,7 +3,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: nginx-victim
-  annotations:
+  labels:
     quota.scheduling.kaschnit.github.io/queue: "tenant-a"
     quota.scheduling.kaschnit.github.io/is-victim: "true"
 spec:
