@@ -5,7 +5,7 @@
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-NAME="scheduler-demo"
+NAME="scheduler-test"
 
 # Recreate cluster
 kind delete cluster --name "${NAME}"
