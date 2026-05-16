@@ -19,15 +19,18 @@ profiles:
     args:
       apiVersion: schedulingconfig.kaschnit.github.io/v1
       kind: QuotaAwarePreemptionArgs
-      enableAsyncPreemption: true
+      preemption:
+        enableAsyncPreemption: true
       queues:
         tenant-a:
           quota:
-            cpu: 3
-            memory: 3Gi
-            pods: 2
+            max:
+              cpu: 3
+              memory: 3Gi
+              pods: 2
         tenant-b:
           quota:
-            cpu: 3
-            memory: 3Gi
-            pods: 2
+            max:
+              cpu: 3
+              memory: 3Gi
+              pods: 2

@@ -6,6 +6,8 @@ import (
 	"math"
 	"sync"
 
+	configv1 "github.com/kaschnit/custom-scheduler/apis/config/v1"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
@@ -18,44 +20,44 @@ var (
 	ErrRemovePodFromQuota = errors.New("failed to remove pod from quota")
 )
 
-// QuotaManager manages quotas per queue.
-type QuotaManager struct {
+// Manager manages quotas per queue.
+type Manager struct {
 	sync.RWMutex
-	quotaByQueue map[string]*Quota
+	queueByName map[string]*Queue
 }
 
-// NewQuotaManager creates a new [QuotaManager].
-func NewQuotaManager() *QuotaManager {
-	return &QuotaManager{
-		quotaByQueue: make(map[string]*Quota),
+// NewManager creates a new [Manager].
+func NewManager() *Manager {
+	return &Manager{
+		queueByName: make(map[string]*Queue),
 	}
 }
 
 // Get gets the quota related to the pod, based on the pod's queue.
 // If the pod is nil or has no queue, returns nil.
-func (qm *QuotaManager) Get(pod *corev1.Pod) *Quota {
+func (qm *Manager) Get(pod *corev1.Pod) *Queue {
 	qm.RLock()
 	defer qm.RUnlock()
 
 	return qm.get(pod)
 }
 
-func (qm *QuotaManager) get(pod *corev1.Pod) *Quota {
+func (qm *Manager) get(pod *corev1.Pod) *Queue {
 	if pod == nil {
 		return nil
 	}
 
-	queue, ok := pod.Labels[LabelKeyQueue]
+	queue, ok := pod.Labels[configv1.LabelKeyQueue]
 	if !ok {
 		// Ignore pod if it has no queue, it will not be tracked.
 		return nil
 	}
 
-	return qm.quotaByQueue[queue]
+	return qm.queueByName[queue]
 }
 
-// Set creates or updates the quota.
-func (qm *QuotaManager) Set(queue string, max corev1.ResourceList) {
+// Set creates or updates the quota for the queeu.
+func (qm *Manager) SetQuota(queueName string, max corev1.ResourceList) {
 	if max == nil {
 		max = corev1.ResourceList{
 			corev1.ResourceCPU:              *resource.NewMilliQuantity(math.MaxInt64, resource.DecimalSI),
@@ -68,77 +70,80 @@ func (qm *QuotaManager) Set(queue string, max corev1.ResourceList) {
 	qm.Lock()
 	defer qm.Unlock()
 
-	quota := qm.quotaByQueue[queue]
-	if quota == nil {
-		qm.quotaByQueue[queue] = newQuota(queue, max)
+	q := qm.queueByName[queueName]
+	if q == nil {
+		qm.queueByName[queueName] = &Queue{
+			Name:  queueName,
+			Quota: NewQuota(max),
+		}
 	} else {
-		quota.Max = framework.NewResource(max)
+		q.Quota.Max = framework.NewResource(max)
 	}
 }
 
 // AddPodIfNotPresent adds the pod to the quota if the pod has a quota.
-func (qm *QuotaManager) AddPodIfNotPresent(pod *corev1.Pod) error {
+func (qm *Manager) AddPodIfNotPresent(pod *corev1.Pod) error {
 	qm.Lock()
 	defer qm.Unlock()
 
-	return qm.addPodIfNotPresent(pod)
+	return qm.addPodIfNotPresentNoLock(pod)
 }
 
-func (qm *QuotaManager) addPodIfNotPresent(pod *corev1.Pod) error {
+func (qm *Manager) addPodIfNotPresentNoLock(pod *corev1.Pod) error {
 	if pod == nil {
 		return nil
 	}
 
-	queue, ok := pod.Labels[LabelKeyQueue]
+	queueName, ok := pod.Labels[configv1.LabelKeyQueue]
 	if !ok {
 		// Ignore pod if it has no queue, it will not be tracked.
 		return nil
 	}
 
-	quota, ok := qm.quotaByQueue[queue]
+	q, ok := qm.queueByName[queueName]
 	if !ok {
-		return fmt.Errorf("%w: queue '%s' does not exist", ErrAddPodToQuota, queue)
+		return fmt.Errorf("%w: queue '%s' does not exist", ErrAddPodToQuota, queueName)
 	}
 
-	return quota.AddPodIfNotPresent(pod)
+	return q.Quota.AddPodIfNotPresent(pod)
 }
 
 // DeletePodIfPresent removes the pod to the quota if the pod has a quota.
-func (qm *QuotaManager) DeletePodIfPresent(pod *corev1.Pod) error {
+func (qm *Manager) DeletePodIfPresent(pod *corev1.Pod) error {
 	qm.Lock()
 	defer qm.Unlock()
 
-	return qm.deletePodIfPresent(pod)
+	return qm.deletePodIfPresentNoLock(pod)
 }
 
-func (qm *QuotaManager) deletePodIfPresent(pod *corev1.Pod) error {
+func (qm *Manager) deletePodIfPresentNoLock(pod *corev1.Pod) error {
 	if pod == nil {
 		return nil
 	}
 
-	queue, ok := pod.Labels[LabelKeyQueue]
+	queueName, ok := pod.Labels[configv1.LabelKeyQueue]
 	if !ok {
 		// Ignore pod if it has no queue, it will not be tracked.
 		return nil
 	}
 
-	quota, ok := qm.quotaByQueue[queue]
+	q, ok := qm.queueByName[queueName]
 	if !ok {
-		return fmt.Errorf("%w: queue '%s' does not exist", ErrRemovePodFromQuota, queue)
+		return fmt.Errorf("%w: queue '%s' does not exist", ErrRemovePodFromQuota, queueName)
 	}
 
-	return quota.DeletePodIfPresent(pod)
+	return q.Quota.DeletePodIfPresent(pod)
 }
 
-// Clone creates a clone of the [QuotaManager].
-func (qm *QuotaManager) Clone() *QuotaManager {
-	quotaMgrClone := NewQuotaManager()
+// Clone creates a clone of the [Manager].
+func (qm *Manager) Clone() *Manager {
+	quotaMgrClone := NewManager()
 
 	qm.RLock()
 	defer qm.RUnlock()
 
-	for queue, quota := range qm.quotaByQueue {
-		quotaMgrClone.quotaByQueue[queue] = quota.Clone()
+	for queueName, queue := range qm.queueByName {
+		quotaMgrClone.queueByName[queueName] = queue.Clone()
 	}
 
 	return quotaMgrClone

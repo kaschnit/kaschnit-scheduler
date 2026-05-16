@@ -5,7 +5,7 @@ metadata:
   name: nginx-preemptor
   labels:
     quota.scheduling.kaschnit.github.io/queue: "tenant-a"
-    quota.scheduling.kaschnit.github.io/is-preemptor: "true"
+    quota.scheduling.kaschnit.github.io/preemptor: "true"
 spec:
   schedulerName: custom-scheduler
   priorityClassName: "high"

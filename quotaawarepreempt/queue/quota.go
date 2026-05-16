@@ -10,8 +10,6 @@ import (
 
 // Quota tracks the max and available quota.
 type Quota struct {
-	// Queue is the name of the queue.
-	Queue string
 	// Max is the available resources.
 	Max *framework.Resource
 	// Used is the used resources.
@@ -21,12 +19,12 @@ type Quota struct {
 	pods sets.Set[string]
 }
 
-func newQuota(queue string, max corev1.ResourceList) *Quota {
+// NewQuota creates a new [Quota].
+func NewQuota(max corev1.ResourceList) *Quota {
 	return &Quota{
-		Queue: queue,
-		Max:   framework.NewResource(max),
-		Used:  framework.NewResource(nil),
-		pods:  sets.New[string](),
+		Max:  framework.NewResource(max),
+		Used: framework.NewResource(nil),
+		pods: sets.New[string](),
 	}
 }
 
@@ -42,7 +40,7 @@ func (q *Quota) AddPodIfNotPresent(pod *corev1.Pod) error {
 	}
 
 	q.pods.Insert(key)
-	resconv.AddFwkInPlace(q.Used, resconv.ExtractFwkFromPod(pod))
+	resconv.AddInPlace(q.Used, resconv.FromPod(pod))
 
 	return nil
 }
@@ -59,7 +57,7 @@ func (q *Quota) DeletePodIfPresent(pod *corev1.Pod) error {
 	}
 
 	q.pods.Delete(key)
-	resconv.SubtractFwkInPlace(q.Used, resconv.ExtractFwkFromPod(pod))
+	resconv.SubtractInPlace(q.Used, resconv.FromPod(pod))
 
 	return nil
 }
@@ -67,7 +65,7 @@ func (q *Quota) DeletePodIfPresent(pod *corev1.Pod) error {
 // WouldPutOverMax returns true if request would put the quota over its max
 // when added to the used amount.
 func (q *Quota) WouldPutOverMax(request *framework.Resource) bool {
-	return rescmp.AnyGreaterThanOnlyExisting(resconv.AddFwk(q.Used, request), q.Max)
+	return rescmp.AnyGreaterThanOnlyExisting(resconv.Add(q.Used, request), q.Max)
 }
 
 // Clone clones the [Quota].

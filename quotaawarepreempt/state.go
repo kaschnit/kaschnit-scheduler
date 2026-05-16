@@ -13,31 +13,34 @@ var _ fwk.StateData = (*RequstedResourceState)(nil)
 
 // RequstedResourceState is shared scheduling state related to requested resources.
 type RequstedResourceState struct {
-	request             framework.Resource
-	nominatedReqInQuota framework.Resource
+	// Request is the requested resources for the pod this cycle.
+	Request framework.Resource
+	// NominatedReqInQuota is the sum of requests in the quota for pods
+	// that have a nominated node in the current cycle.
+	NominatedReqInQuota framework.Resource
 }
 
 // Clone implements [fwk.StateData].
 func (s *RequstedResourceState) Clone() fwk.StateData {
 	return &RequstedResourceState{
-		request:             *s.request.Clone(),
-		nominatedReqInQuota: *s.nominatedReqInQuota.Clone(),
+		Request:             *s.Request.Clone(),
+		NominatedReqInQuota: *s.NominatedReqInQuota.Clone(),
 	}
 }
 
 const stateKeyQuotaSnapshot fwk.StateKey = "QuotaSnapshot" + PluginName
 
-var _ fwk.StateData = (*QuotaSnapshotState)(nil)
+var _ fwk.StateData = (*QueueSnapshotState)(nil)
 
-// QuotaSnapshotState is shared scheduling state related to quota usage.
-type QuotaSnapshotState struct {
-	QuotaMgr *queue.QuotaManager
+// QueueSnapshotState is shared scheduling state related to quota usage.
+type QueueSnapshotState struct {
+	QueueMgr *queue.Manager
 }
 
 // Clone implements [fwk.StateData].
-func (s *QuotaSnapshotState) Clone() fwk.StateData {
-	return &QuotaSnapshotState{
-		QuotaMgr: s.QuotaMgr.Clone(),
+func (s *QueueSnapshotState) Clone() fwk.StateData {
+	return &QueueSnapshotState{
+		QueueMgr: s.QueueMgr.Clone(),
 	}
 }
 
@@ -63,12 +66,12 @@ func (mgr *StateManager) WriteRequestedResource(data *RequstedResourceState) {
 	mgr.cycleState.Write(stateKeyPreFilter, data)
 }
 
-// ReadQuotaSnapshot reads the quota usage snapshot data from the scheduling cycle state.
-func (mgr *StateManager) ReadQuotaSnapshot() (*QuotaSnapshotState, error) {
-	return fwkutil.ReadState[*QuotaSnapshotState](mgr.cycleState, stateKeyQuotaSnapshot)
+// ReadQueueSnapshot reads the queue snapshot from the scheduling cycle state.
+func (mgr *StateManager) ReadQueueSnapshot() (*QueueSnapshotState, error) {
+	return fwkutil.ReadState[*QueueSnapshotState](mgr.cycleState, stateKeyQuotaSnapshot)
 }
 
-// WriteQuotaSnapshot writes the quota usage snapshot data to the scheduling cycle state.
-func (mgr *StateManager) WriteQuotaSnapshot(data *QuotaSnapshotState) {
+// WriteQueueSnapshot writes the queue snapshot to the scheduling cycle state.
+func (mgr *StateManager) WriteQueueSnapshot(data *QueueSnapshotState) {
 	mgr.cycleState.Write(stateKeyQuotaSnapshot, data)
 }

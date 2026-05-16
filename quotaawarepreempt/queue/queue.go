@@ -1,6 +1,16 @@
 package queue
 
-const (
-	// LabelKeyQueue is the name of the label whose value is the queue.
-	LabelKeyQueue = "quota.scheduling.kaschnit.github.io/queue"
-)
+type Queue struct {
+	// Name is the name of the queue.
+	Name string
+	// Quota is the queue's quota.
+	Quota *Quota
+}
+
+// Clone clones the [Queue].
+func (q *Queue) Clone() *Queue {
+	return &Queue{
+		Name:  q.Name,
+		Quota: q.Quota.Clone(),
+	}
+}

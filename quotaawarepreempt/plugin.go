@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	configv1 "github.com/kaschnit/custom-scheduler/apis/config/v1"
-	"github.com/kaschnit/custom-scheduler/apis/scheduling"
 	"github.com/kaschnit/custom-scheduler/internal/podutil"
 	"github.com/kaschnit/custom-scheduler/internal/resconv"
 	"github.com/kaschnit/custom-scheduler/quotaawarepreempt/queue"
@@ -25,15 +24,12 @@ import (
 const (
 	// PluginName is the name of the scheduling plugin.
 	PluginName = "QuotaAwarePreemption"
-
-	// LabelKeyPrefix is the prefix of the labels for this plugin.
-	LabelKeyPrefix = "quota." + scheduling.GroupName + "/"
 )
 
 // Plugin is a kube-scheduler framework plugin for quota-aware preemption.
 type Plugin struct {
 	sync.RWMutex
-	quotaMgr queue.QuotaManager
+	queueMgr queue.Manager
 	logger   klog.Logger
 	fh       fwk.Handle
 	args     configv1.QuotaAwarePreemptionArgs
@@ -57,7 +53,7 @@ func NewPlugin(ctx context.Context, rawArgs runtime.Object, fh fwk.Handle) (fwk.
 	}
 
 	plugin := Plugin{
-		quotaMgr: *queue.NewQuotaManager(),
+		queueMgr: *queue.NewManager(),
 		logger:   logger,
 		fh:       fh,
 		args:     args,
@@ -98,7 +94,7 @@ func NewPlugin(ctx context.Context, rawArgs runtime.Object, fh fwk.Handle) (fwk.
 	//	Custom resource will allow updating quotas without restarting the scheduler.
 	//	It will also allow easier configuration generally.
 	for name, queue := range args.Queues {
-		plugin.quotaMgr.Set(name, queue.Quota.Max)
+		plugin.queueMgr.SetQuota(name, queue.Quota.Max)
 	}
 
 	logger.Info("Initialized plugin")
@@ -120,17 +116,17 @@ func (plugin *Plugin) PreFilter(
 ) (*fwk.PreFilterResult, *fwk.Status) {
 	stateMgr := NewStateManager(state)
 
-	quotaSnapshot := &QuotaSnapshotState{
-		QuotaMgr: plugin.quotaMgr.Clone(),
+	qSnapshot := &QueueSnapshotState{
+		QueueMgr: plugin.queueMgr.Clone(),
 	}
-	stateMgr.WriteQuotaSnapshot(quotaSnapshot)
+	stateMgr.WriteQueueSnapshot(qSnapshot)
 
-	podReq := resconv.ExtractFwkFromPod(pod)
+	podReq := resconv.FromPod(pod)
 
-	quota := quotaSnapshot.QuotaMgr.Get(pod)
-	if quota == nil {
+	podQ := qSnapshot.QueueMgr.Get(pod)
+	if podQ == nil {
 		stateMgr.WriteRequestedResource(&RequstedResourceState{
-			request: *podReq,
+			Request: *podReq,
 		})
 		return nil, fwk.NewStatus(fwk.Success)
 	}
@@ -148,14 +144,14 @@ func (plugin *Plugin) PreFilter(
 				continue
 			}
 
-			nomQuota := quotaSnapshot.QuotaMgr.Get(nomPodInfo.GetPod())
-			if nomQuota != nil {
-				nomResourceRequest := resconv.FwkToCoreV1List(resconv.ExtractFwkFromPod(nomPodInfo.GetPod()))
+			nomQ := qSnapshot.QueueMgr.Get(nomPodInfo.GetPod())
+			if nomQ != nil {
+				nomResourceRequest := resconv.ToResourceList(resconv.FromPod(nomPodInfo.GetPod()))
 				// If they are subject to the same quota and nomPod is scheduled ahead of (higher priority than) pod,
 				// nomPod will be added to the nominatedReqInQuota.
 				// If they aren't subject to the same quota and the usage of nomQuota does not exceed min,
 				// p will be added to the totalNominatedResource.
-				if nomQuota.Queue == quota.Queue && corev1helpers.PodPriority(nomPodInfo.GetPod()) >= corev1helpers.PodPriority(pod) {
+				if nomQ.Name == podQ.Name && corev1helpers.PodPriority(nomPodInfo.GetPod()) >= corev1helpers.PodPriority(pod) {
 					nominatedReqInQuota.Add(nomResourceRequest)
 				}
 			}
@@ -163,14 +159,14 @@ func (plugin *Plugin) PreFilter(
 	}
 
 	stateMgr.WriteRequestedResource(&RequstedResourceState{
-		request:             *podReq,
-		nominatedReqInQuota: nominatedReqInQuota,
+		Request:             *podReq,
+		NominatedReqInQuota: nominatedReqInQuota,
 	})
 
-	if quota.WouldPutOverMax(resconv.AddFwk(&nominatedReqInQuota, podReq)) {
+	if podQ.Quota.WouldPutOverMax(resconv.Add(&nominatedReqInQuota, podReq)) {
 		return nil, fwk.NewStatus(fwk.Unschedulable,
 			fmt.Sprintf("Not eligible for scheduling because queue %s exceeds quota (used=%+v, max=%+v)",
-				quota.Queue, quota.Used, quota.Max))
+				podQ.Name, podQ.Quota.Used, podQ.Quota.Max))
 	}
 
 	return nil, fwk.NewStatus(fwk.Success, "")
@@ -228,13 +224,13 @@ func (plugin *Plugin) AddPod(
 
 	stateMgr := NewStateManager(state)
 
-	quotaSnapshot, err := stateMgr.ReadQuotaSnapshot()
+	quotaSnapshot, err := stateMgr.ReadQueueSnapshot()
 	if err != nil {
 		logger.Error(err, "Failed to read quotaSnapshotState from cycleState")
 		return fwk.NewStatus(fwk.Error, err.Error())
 	}
 
-	if err := quotaSnapshot.QuotaMgr.AddPodIfNotPresent(podInfoToAdd.GetPod()); err != nil {
+	if err := quotaSnapshot.QueueMgr.AddPodIfNotPresent(podInfoToAdd.GetPod()); err != nil {
 		logger.Error(err, "Failed to add Pod to its associated quota usage",
 			"pod", klog.KObj(podInfoToAdd.GetPod()))
 	}
@@ -256,13 +252,13 @@ func (plugin *Plugin) RemovePod(
 
 	stateMgr := NewStateManager(state)
 
-	quotaSnapshot, err := stateMgr.ReadQuotaSnapshot()
+	quotaSnapshot, err := stateMgr.ReadQueueSnapshot()
 	if err != nil {
 		logger.Error(err, "Failed to read quotaSnapshotState from cycleState")
 		return fwk.NewStatus(fwk.Error, err.Error())
 	}
 
-	if err := quotaSnapshot.QuotaMgr.DeletePodIfPresent(podInfoToRemove.GetPod()); err != nil {
+	if err := quotaSnapshot.QueueMgr.DeletePodIfPresent(podInfoToRemove.GetPod()); err != nil {
 		logger.Error(err, "Failed to delete Pod from its associated quota usage",
 			"pod", klog.KObj(podInfoToRemove.GetPod()))
 	}
@@ -274,7 +270,7 @@ func (plugin *Plugin) RemovePod(
 func (plugin *Plugin) Reserve(ctx context.Context, state fwk.CycleState, pod *corev1.Pod, nodeName string) *fwk.Status {
 	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger)).WithValues("ExtensionPoint", "Reserve")
 
-	if err := plugin.quotaMgr.AddPodIfNotPresent(pod); err != nil {
+	if err := plugin.queueMgr.AddPodIfNotPresent(pod); err != nil {
 		logger.Error(err, "Failed to add Pod to its associated queue quota", "pod", klog.KObj(pod))
 		return fwk.NewStatus(fwk.Error, err.Error())
 	}
@@ -286,7 +282,7 @@ func (plugin *Plugin) Reserve(ctx context.Context, state fwk.CycleState, pod *co
 func (plugin *Plugin) Unreserve(ctx context.Context, state fwk.CycleState, pod *corev1.Pod, nodeName string) {
 	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger)).WithValues("ExtensionPoint", "Reserve")
 
-	if err := plugin.quotaMgr.DeletePodIfPresent(pod); err != nil {
+	if err := plugin.queueMgr.DeletePodIfPresent(pod); err != nil {
 		logger.Error(err, "Failed to remove Pod from its associated queue quota", "pod", klog.KObj(pod))
 	}
 }
@@ -333,7 +329,7 @@ func (plugin *Plugin) informerAddPod(obj any) {
 			"obj", obj)
 	}
 
-	if err := plugin.quotaMgr.AddPodIfNotPresent(pod); err != nil {
+	if err := plugin.queueMgr.AddPodIfNotPresent(pod); err != nil {
 		logger.Error(err, "Failed to add Pod to its associated quota",
 			"pod", klog.KObj(pod))
 	}
@@ -359,7 +355,7 @@ func (plugin *Plugin) informerUpdatePod(oldObj, newObj any) {
 		return
 	}
 
-	if err := plugin.quotaMgr.DeletePodIfPresent(newPod); err != nil {
+	if err := plugin.queueMgr.DeletePodIfPresent(newPod); err != nil {
 		logger.Error(err, "Failed to delete Pod from its associated quota",
 			"pod", klog.KObj(newPod))
 	}
@@ -375,7 +371,7 @@ func (plugin *Plugin) informerDeletePod(obj any) {
 			"obj", obj)
 	}
 
-	if err := plugin.quotaMgr.DeletePodIfPresent(pod); err != nil {
+	if err := plugin.queueMgr.DeletePodIfPresent(pod); err != nil {
 		logger.Error(err, "Failed to delete Pod from its associated quota",
 			"pod", klog.KObj(pod))
 	}

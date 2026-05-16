@@ -20,15 +20,6 @@ import (
 	schedutil "k8s.io/kubernetes/pkg/scheduler/util"
 )
 
-const (
-	// LabelKeyPreemptor specifies whether this pod can preempt other pods.
-	// If unspecified, empty, or invalid, defaults to false (this pod cannot preempt).
-	LabelKeyPreemptor = LabelKeyPrefix + "is-preemptor"
-	// LabelKeyVictim specifies whether this pod can be preempted by other pods.
-	// If unspecified, empty, or invalid, defaults to false (this pod cannot be preempted).
-	LabelKeyVictim = LabelKeyPrefix + "is-victim"
-)
-
 type preemptor struct {
 	logger   klog.Logger
 	fh       fwk.Handle
@@ -100,7 +91,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 
 	// Check the preemptor label.
 	// The pod is only eligible to preempt if it has this label.
-	if !boolstr.IsTrue(pod.Labels[LabelKeyPreemptor]) {
+	if !boolstr.IsTrue(pod.Labels[configv1.LabelKeyPreemptor]) {
 		return false, "Not eligible to preempt due to is-preemptor!=true"
 	}
 
@@ -137,7 +128,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 	}
 
 	// Fetch the quota snapshot from the prefilter.
-	quotaSnapshot, err := p.stateMgr.ReadQuotaSnapshot()
+	quotaSnapshot, err := p.stateMgr.ReadQueueSnapshot()
 	if err != nil {
 		logger.Error(err, "Failed to read quotaSnapshotState from cycleState")
 		return true, ""
@@ -148,10 +139,10 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 	// We should preempt on this node if there are no terminating lower-priority pods
 	// on the node, as such terminations may indicate that this pod already preempted.
 	preemptorPriority := corev1helpers.PodPriority(pod)
-	preemptorQuota := quotaSnapshot.QuotaMgr.Get(pod)
-	if preemptorQuota != nil { // Quota-aware preemption path
-		wouldBeOverQuota := preemptorQuota.WouldPutOverMax(
-			resconv.AddFwk(&requestedResources.request, &requestedResources.nominatedReqInQuota))
+	preemptorQ := quotaSnapshot.QueueMgr.Get(pod)
+	if preemptorQ != nil { // Quota-aware preemption path
+		wouldBeOverQuota := preemptorQ.Quota.WouldPutOverMax(
+			resconv.Add(&requestedResources.Request, &requestedResources.NominatedReqInQuota))
 
 		// Check for terminating pods (marked for deletion) that will clear up space for preemptor.
 		// This check prevents additional preemptions unnecessarily.
@@ -165,25 +156,25 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 				// Thus it is not a preemption victim, it's just a terminating pod.
 				continue
 			}
-			if !boolstr.IsTrue(victimInfo.GetPod().Labels[LabelKeyVictim]) {
+			if !boolstr.IsTrue(victimInfo.GetPod().Labels[configv1.LabelKeyVictim]) {
 				// Terminating pod is not allowed to be a vicitm.
 				// This it is preemption victim, it's just a terminating pod.
 				continue
 			}
 
-			victimQuota := quotaSnapshot.QuotaMgr.Get(victimInfo.GetPod())
-			if victimQuota == nil {
+			victimQ := quotaSnapshot.QueueMgr.Get(victimInfo.GetPod())
+			if victimQ == nil {
 				// No quota to check for victim, move on to the next.
 				continue
 			}
 
-			if preemptorQuota.Queue == victimQuota.Queue && corev1helpers.PodPriority(victimInfo.GetPod()) < preemptorPriority {
+			if preemptorQ.Name == victimQ.Name && corev1helpers.PodPriority(victimInfo.GetPod()) < preemptorPriority {
 				// There is a terminating victim in the queue (sharing quota with preemptor) and of lower priority.
 				// This may free up room to schedule the preemptor, so no need to preempt.
 				return false, "Not eligible to preempt due to a terminating pod on the nominated node."
 			}
 
-			if preemptorQuota.Queue != victimQuota.Queue && !wouldBeOverQuota {
+			if preemptorQ.Name != victimQ.Name && !wouldBeOverQuota {
 				// There is a terminating victim in a different queue (not sharing quota with preemptor).
 				// The preemptor is also not going to be over its quota, and thus is schedulable in terms of quota.
 				// So, waiting for this victim to finish terminating will allow the preemptor to schedule.
@@ -198,7 +189,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 				continue
 			}
 
-			if victimQuota := quotaSnapshot.QuotaMgr.Get(victimPodInfo.GetPod()); victimQuota != nil {
+			if victimQuota := quotaSnapshot.QueueMgr.Get(victimPodInfo.GetPod()); victimQuota != nil {
 				// Victim has a quota, do not evaluate for normal preemption path.
 				continue
 			}
@@ -235,7 +226,7 @@ func (p *preemptor) SelectVictimsOnNode(
 		return nil, 0, fwk.NewStatus(fwk.Unschedulable, "Failed to read preFilterState from cycleState")
 	}
 
-	quotaSnapshotState, err := p.stateMgr.ReadQuotaSnapshot()
+	quotaSnapshotState, err := p.stateMgr.ReadQueueSnapshot()
 	if err != nil {
 		logger.Error(err, "Failed to read quotaSnapshotState from cycleState")
 		return nil, 0, fwk.NewStatus(fwk.Unschedulable, "Failed to read quotaSnapshotState from cycleState")
@@ -251,7 +242,7 @@ func (p *preemptor) SelectVictimsOnNode(
 		if !status.IsSuccess() {
 			return status.AsError()
 		}
-		if err := quotaSnapshotState.QuotaMgr.DeletePodIfPresent(pi.GetPod()); err != nil {
+		if err := quotaSnapshotState.QueueMgr.DeletePodIfPresent(pi.GetPod()); err != nil {
 			return err
 		}
 		return nil
@@ -265,27 +256,27 @@ func (p *preemptor) SelectVictimsOnNode(
 		if !status.IsSuccess() {
 			return status.AsError()
 		}
-		if err := quotaSnapshotState.QuotaMgr.AddPodIfNotPresent(pi.GetPod()); err != nil {
+		if err := quotaSnapshotState.QueueMgr.AddPodIfNotPresent(pi.GetPod()); err != nil {
 			return err
 		}
 		return nil
 	}
 
-	preemptorQuota := quotaSnapshotState.QuotaMgr.Get(pod)
-	preemptorPriority := corev1helpers.PodPriority(pod)
+	preemptorQ := quotaSnapshotState.QueueMgr.Get(pod)
+	preemptorPrio := corev1helpers.PodPriority(pod)
 
 	logger.Info("Looking for potential preemption victim on node")
 
 	// Identify all potential victims, simulating their removal.
 	var potentialVictims []fwk.PodInfo
-	if preemptorQuota != nil { // Quota-aware preemption path
+	if preemptorQ != nil { // Quota-aware preemption path
 		for _, victimInfo := range nodeInfo.GetPods() {
-			if victimQuota := quotaSnapshotState.QuotaMgr.Get(victimInfo.GetPod()); victimQuota == nil {
+			if victimQuota := quotaSnapshotState.QueueMgr.Get(victimInfo.GetPod()); victimQuota == nil {
 				// Not a victim if it has no queue/quota specified.
 				continue
 			}
 
-			if corev1helpers.PodPriority(victimInfo.GetPod()) >= preemptorPriority {
+			if corev1helpers.PodPriority(victimInfo.GetPod()) >= preemptorPrio {
 				// Not a victim if it's same or higher priority than the preemptor.
 				continue
 			}
@@ -297,12 +288,12 @@ func (p *preemptor) SelectVictimsOnNode(
 		}
 	} else { // Vanilla preemption path
 		for _, victimInfo := range nodeInfo.GetPods() {
-			if victimQuota := quotaSnapshotState.QuotaMgr.Get(victimInfo.GetPod()); victimQuota != nil {
+			if victimQuota := quotaSnapshotState.QueueMgr.Get(victimInfo.GetPod()); victimQuota != nil {
 				// Not a victim for vanilla preemption path if it has a quota.
 				continue
 			}
 
-			if corev1helpers.PodPriority(victimInfo.GetPod()) >= preemptorPriority {
+			if corev1helpers.PodPriority(victimInfo.GetPod()) >= preemptorPrio {
 				// Not a victim if it's same or higher priority than the preemptor.
 				continue
 			}
@@ -331,17 +322,17 @@ func (p *preemptor) SelectVictimsOnNode(
 		return nil, 0, status
 	}
 
-	if preemptorQuota != nil && preemptorQuota.WouldPutOverMax(&requestedResources.request) {
+	if preemptorQ != nil && preemptorQ.Quota.WouldPutOverMax(&requestedResources.Request) {
 		// If there's a quota and it's exceeded even after removing all potential victims,
 		// there's nothing we can do on this node to make pods schedule. So this node is
 		// not eligible for preemption (i.e. has no eligible victims).
 		logger.Info("Preemptor does not fit quota after removing potential victims from node",
-			"requested", requestedResources.request,
-			"used", preemptorQuota.Used,
-			"max", preemptorQuota.Max)
+			"requested", requestedResources.Request,
+			"used", preemptorQ.Quota.Used,
+			"max", preemptorQ.Quota.Max)
 		return nil, 0, fwk.NewStatus(fwk.Unschedulable,
 			fmt.Sprintf("Not eligible for preemption because queue exceeds after preemption (used=%+v, max=%+v)",
-				preemptorQuota.Used, preemptorQuota.Max))
+				preemptorQ.Quota.Used, preemptorQ.Quota.Max))
 	}
 
 	// Sort potential victims in descending order of priority.
@@ -386,8 +377,8 @@ func (p *preemptor) SelectVictimsOnNode(
 		// Check if the quotas are in violation after adding back the potential victim.
 		// This is to ensure that victims are selected such that the quota is reduced
 		// below the max to make room for the preemptor.
-		if preemptorQuota != nil && preemptorQuota.WouldPutOverMax(
-			resconv.AddFwk(&requestedResources.request, &requestedResources.nominatedReqInQuota)) {
+		if preemptorQ != nil && preemptorQ.Quota.WouldPutOverMax(
+			resconv.Add(&requestedResources.Request, &requestedResources.NominatedReqInQuota)) {
 			// Pod did not fit in quota with preemptor; this pod should indeed be a victim.
 			if err := removePod(pi); err != nil {
 				return false, err

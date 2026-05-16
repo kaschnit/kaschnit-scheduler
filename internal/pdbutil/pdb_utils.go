@@ -33,8 +33,9 @@ func EvaluatePodRemovalViolations(podInfos []fwk.PodInfo, pdbs []*policyv1.PodDi
 		pod := podInfo.GetPod()
 		pdbForPodIsViolated := false
 
-		// A pod with no labels will not match any PDB. So, no need to check.
-		if len(pod.Labels) != 0 {
+		// A pod with no labels will not match any PDB. So, only need to check
+		// if the pod has labels.
+		if len(pod.Labels) > 0 {
 			for i, pdb := range pdbs {
 				if pdb.Namespace != pod.Namespace {
 					continue
