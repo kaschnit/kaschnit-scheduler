@@ -1,8 +1,8 @@
 package queue
 
 import (
-	"github.com/kaschnit/custom-scheduler/internal/rescmp"
 	"github.com/kaschnit/custom-scheduler/internal/resconv"
+	"github.com/kaschnit/custom-scheduler/internal/resmath"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
@@ -40,7 +40,7 @@ func (q *Quota) AddPodIfNotPresent(pod *corev1.Pod) error {
 	}
 
 	q.pods.Insert(key)
-	resconv.AddInPlace(q.Used, resconv.FromPod(pod))
+	resmath.AddInPlace(q.Used, resconv.FromPod(pod))
 
 	return nil
 }
@@ -57,7 +57,7 @@ func (q *Quota) DeletePodIfPresent(pod *corev1.Pod) error {
 	}
 
 	q.pods.Delete(key)
-	resconv.SubtractInPlace(q.Used, resconv.FromPod(pod))
+	resmath.SubtractInPlace(q.Used, resconv.FromPod(pod))
 
 	return nil
 }
@@ -65,7 +65,7 @@ func (q *Quota) DeletePodIfPresent(pod *corev1.Pod) error {
 // WouldPutOverMax returns true if request would put the quota over its max
 // when added to the used amount.
 func (q *Quota) WouldPutOverMax(request *framework.Resource) bool {
-	return rescmp.AnyGreaterThanOnlyExisting(resconv.Add(q.Used, request), q.Max)
+	return resmath.AnyGreaterThanOnlyExisting(resmath.Add(q.Used, request), q.Max)
 }
 
 // Clone clones the [Quota].

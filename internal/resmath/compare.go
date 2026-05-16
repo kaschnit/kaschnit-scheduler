@@ -1,4 +1,4 @@
-package rescmp
+package resmath
 
 import "k8s.io/kubernetes/pkg/scheduler/framework"
 

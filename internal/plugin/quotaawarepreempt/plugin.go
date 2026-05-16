@@ -8,6 +8,7 @@ import (
 	configv1 "github.com/kaschnit/custom-scheduler/apis/config/v1"
 	"github.com/kaschnit/custom-scheduler/internal/plugin/quotaawarepreempt/queue"
 	"github.com/kaschnit/custom-scheduler/internal/resconv"
+	"github.com/kaschnit/custom-scheduler/internal/resmath"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
@@ -139,7 +140,7 @@ func (plugin *Plugin) PreFilter(
 		NominatedReqInQuota: nominatedReqInQuota,
 	})
 
-	if podQ.Quota.WouldPutOverMax(resconv.Add(&nominatedReqInQuota, podReq)) {
+	if podQ.Quota.WouldPutOverMax(resmath.Add(&nominatedReqInQuota, podReq)) {
 		return nil, fwk.NewStatus(fwk.Unschedulable,
 			fmt.Sprintf("Not eligible for scheduling because queue %s exceeds quota (used=%+v, max=%+v)",
 				podQ.Name, podQ.Quota.Used, podQ.Quota.Max))

@@ -9,7 +9,7 @@ import (
 	configv1 "github.com/kaschnit/custom-scheduler/apis/config/v1"
 	"github.com/kaschnit/custom-scheduler/internal/boolstr"
 	"github.com/kaschnit/custom-scheduler/internal/pdbutil"
-	"github.com/kaschnit/custom-scheduler/internal/resconv"
+	"github.com/kaschnit/custom-scheduler/internal/resmath"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
@@ -142,7 +142,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 	preemptorQ := quotaSnapshot.QueueMgr.Get(pod)
 	if preemptorQ != nil { // Quota-aware preemption path
 		wouldBeOverQuota := preemptorQ.Quota.WouldPutOverMax(
-			resconv.Add(&requestedResources.Request, &requestedResources.NominatedReqInQuota))
+			resmath.Add(&requestedResources.Request, &requestedResources.NominatedReqInQuota))
 
 		// Check for terminating pods (marked for deletion) that will clear up space for preemptor.
 		// This check prevents additional preemptions unnecessarily.
@@ -378,7 +378,7 @@ func (p *preemptor) SelectVictimsOnNode(
 		// This is to ensure that victims are selected such that the quota is reduced
 		// below the max to make room for the preemptor.
 		if preemptorQ != nil && preemptorQ.Quota.WouldPutOverMax(
-			resconv.Add(&requestedResources.Request, &requestedResources.NominatedReqInQuota)) {
+			resmath.Add(&requestedResources.Request, &requestedResources.NominatedReqInQuota)) {
 			// Pod did not fit in quota with preemptor; this pod should indeed be a victim.
 			if err := removePod(pi); err != nil {
 				return false, err
