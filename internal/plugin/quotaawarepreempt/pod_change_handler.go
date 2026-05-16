@@ -3,8 +3,8 @@ package quotaawarepreempt
 import (
 	"context"
 
+	"github.com/kaschnit/custom-scheduler/internal/plugin/quotaawarepreempt/queue"
 	"github.com/kaschnit/custom-scheduler/internal/podutil"
-	"github.com/kaschnit/custom-scheduler/plugin/quotaawarepreempt/queue"
 	corev1 "k8s.io/api/core/v1"
 	informerv1 "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/tools/cache"

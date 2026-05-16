@@ -6,8 +6,8 @@ import (
 	"sync"
 
 	configv1 "github.com/kaschnit/custom-scheduler/apis/config/v1"
+	"github.com/kaschnit/custom-scheduler/internal/plugin/quotaawarepreempt/queue"
 	"github.com/kaschnit/custom-scheduler/internal/resconv"
-	"github.com/kaschnit/custom-scheduler/plugin/quotaawarepreempt/queue"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"

@@ -1,5 +1,6 @@
 package queue
 
+// Queue reperesents a queue for pods.
 type Queue struct {
 	// Name is the name of the queue.
 	Name string
