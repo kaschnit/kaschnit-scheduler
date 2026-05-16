@@ -14,13 +14,29 @@ GOLANGCI_LINT ?= $(GO) tool github.com/golangci/golangci-lint/v2/cmd/golangci-li
 KO ?= $(GO) tool github.com/google/ko
 KUBEBUILDER ?= $(GO) tool sigs.k8s.io/kubebuilder/v4
 
+# KIND
+KIND_CLUSTER_NAME = "kind-scheduler-test"
+
+
 CMD := $(CURDIR)/cmd/scheduler
-CRD_BASES := $(CURDIR)/config/crd/bases
 
 ## Location for build artifacts
 BUILD_DIR := $(CURDIR)/build
+
+LOCALBIN_DIR := $(BUILD_DIR)/bin
+
+# Image
+IMG_DIR := $(BUILD_DIR)/image
+IMG_TAR_FILE := $(IMG_DIR)/scheduler.tar
+
 $(BUILD_DIR):
 	mkdir -p "$(BUILD_DIR)"
+
+$(LOCALBIN_DIR):
+	mkdir -p "$(LOCALBIN_DIR)"
+
+$(IMG_DIR):
+	mkdir -p "$(IMG_DIR)"
 
 ##@ General
 
@@ -74,8 +90,8 @@ test: generate ## Run unit tests.
 ##@ Build
 
 .PHONY: build
-build: generate $(BUILD_DIR) ## Build manager binary.
-	$(GO) build -o $(BUILD_DIR)/scheduler $(CMD)
+build: generate $(LOCALBIN_DIR) ## Build manager binary.
+	$(GO) build -o $(LOCALBIN_DIR)/scheduler $(CMD)
 
 .PHONY: run
 run: generate ## Run a controller from your host.
@@ -83,16 +99,27 @@ run: generate ## Run a controller from your host.
 
 .PHONY: image
 image: PUSH := false
-image: generate $(BUILD_DIR) ## Build an image and optionally push it.
+image: generate $(IMG_DIR) ## Build an image and optionally push it.
 	KO_DOCKER_REPO=kschnitzer-custom-scheduler \
 		$(KO) build \
 			--push=$(PUSH) \
 			--platform=linux/$(shell $(GO) env GOARCH) \
-			--tarball=$(BUILD_DIR)/scheduler-image.tar \
+			--tarball=$(IMG_TAR_FILE) \
 			--bare \
 			--tags=development \
 			$(CMD)
 
+.PHONY: kind-delete
+kind-delete:
+	$(KIND) delete cluster --name "$(KIND_CLUSTER_NAME)"
+
+.PHONY: kind-create
+kind-create: kind-delete
+	$(KIND) create cluster --name "$(KIND_CLUSTER_NAME)"
+
 .PHONY: kind-deploy
-kind-deploy: image
-	$(CURDIR)/test/kind/create-cluster.sh
+kind-deploy: image kind-create
+	$(KIND) load image-archive $(IMG_TAR_FILE) --name "$(KIND_CLUSTER_NAME)"
+	$(KUBECTL) apply -f test/kind/namespace.yaml
+	$(KUBECTL) apply -f test/kind/pc.yaml
+	$(KUBECTL) apply -k test/kind/scheduler
