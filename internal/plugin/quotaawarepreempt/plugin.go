@@ -279,14 +279,6 @@ func (plugin *Plugin) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWit
 				ActionType: fwk.Update | fwk.Delete,
 			},
 			QueueingHintFn: func(logger klog.Logger, pod *corev1.Pod, oldObj, newObj interface{}) (fwk.QueueingHint, error) {
-				oldPod, _ := oldObj.(*corev1.Pod)
-				newPod, _ := newObj.(*corev1.Pod)
-
-				logger.Info("Running QueueingHintFn function to evaluate pod",
-					"prevUnschedulablePod", klog.KObj(pod),
-					"eventRelatedOldPod", klog.KObj(oldPod),
-					"eventRelatedNewPod", klog.KObj(newPod))
-
 				return fwk.Queue, nil
 			},
 		},
