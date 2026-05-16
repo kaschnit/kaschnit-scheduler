@@ -55,6 +55,7 @@ clean: ## Clean up files.
 .PHONY: generate
 generate: generate-deepcopy ## Generate code.
 
+.PHONY: generate-deepcopy
 generate-deepcopy: ## Generate k8s DeepCopy code.
 	$(DEEPCOPY_GEN) --output-file zz_generated.deepcopy.go ./...
 
