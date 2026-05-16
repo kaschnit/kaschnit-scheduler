@@ -1,5 +1,5 @@
-// +k8s:deepcopy-gen=package
-
+// +kubebuilder:object:generate=true
+// +groupName=config.scheduling.kaschnit.github.io
 package v1
 
 import (

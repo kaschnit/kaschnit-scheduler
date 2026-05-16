@@ -19,20 +19,6 @@ const (
 	LabelKeyVictim = LabelKeyPrefix + "victim"
 )
 
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
-// QuotaAwarePreemptionArgs holds arguments used to configure QuotaAwarePreemptio plugin.
-type QuotaAwarePreemptionArgs struct {
-	metav1.TypeMeta `json:",inline"`
-
-	// EnableAsyncPreemption is whether to enable async preemption.
-	// Defaults to false.
-	Preemption PreemptionConfig `json:"enableAsyncPreemption"`
-
-	// Queues are the queues by name.
-	Queues map[string]QueueConfig `json:"queues"`
-}
-
 type QueueConfig struct {
 	// Quota is the quota config for this queue.
 	Quota QueueQuotaConfig `json:"quota"`
@@ -56,4 +42,19 @@ type PreemptionConfig struct {
 	// If not provided, the absolute number of preemption candidates to score is
 	// not bounded.
 	MaxNodesToScore *int32 `json:"maxNodesToScore"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:skip
+
+// QuotaAwarePreemptionArgs holds arguments used to configure QuotaAwarePreemptio plugin.
+type QuotaAwarePreemptionArgs struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// EnableAsyncPreemption is whether to enable async preemption.
+	// Defaults to false.
+	Preemption PreemptionConfig `json:"enableAsyncPreemption"`
+
+	// Queues are the queues by name.
+	Queues map[string]QueueConfig `json:"queues"`
 }

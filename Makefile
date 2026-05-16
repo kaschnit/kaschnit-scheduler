@@ -9,14 +9,13 @@ GO ?= go
 KUBECTL ?= $(GO) tool k8s.io/kubernetes/cmd/kubectl
 KIND ?= $(GO) tool sigs.k8s.io/kind
 KUSTOMIZE ?= $(GO) tool sigs.k8s.io/kustomize/kustomize/v5
-DEEPCOPY_GEN ?= $(GO) tool k8s.io/code-generator/cmd/deepcopy-gen
 GOLANGCI_LINT ?= $(GO) tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 KO ?= $(GO) tool github.com/google/ko
 KUBEBUILDER ?= $(GO) tool sigs.k8s.io/kubebuilder/v4
+CONTROLLER_GEN ?= $(GO) tool sigs.k8s.io/controller-tools/cmd/controller-gen
 
 # KIND
 KIND_CLUSTER_NAME = "kind-scheduler-test"
-
 
 CMD := $(CURDIR)/cmd/scheduler
 
@@ -53,11 +52,11 @@ clean: ## Clean up files.
 ##@ Development
 
 .PHONY: generate
-generate: generate-deepcopy ## Generate code.
+generate: controller-gen-objects ## Generate code.
 
-.PHONY: generate-deepcopy
-generate-deepcopy: ## Generate k8s DeepCopy code.
-	$(DEEPCOPY_GEN) --output-file zz_generated.deepcopy.go ./...
+.PHONY: controller-gen-objects
+controller-gen-objects:
+	$(CONTROLLER_GEN) object paths=./...
 
 .PHONY: go-tidy
 go-tidy: generate ## Tidy go.mod and go.sum.

@@ -1,5 +1,5 @@
 // +kubebuilder:object:generate=true
-// +groupName=kaschnit.github.io
+// +groupName=scheduling.kaschnit.github.io
 package v1
 
 import (
@@ -16,10 +16,10 @@ var (
 )
 
 func addKnownTypes(scheme *runtime.Scheme) error {
-	// scheme.AddKnownTypes(SchemeGroupVersion,
-	// 	&Queue{},
-	// 	&QueueList{},
-	// )
+	scheme.AddKnownTypes(SchemeGroupVersion,
+		&Queue{},
+		&QueueList{},
+	)
 
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil
