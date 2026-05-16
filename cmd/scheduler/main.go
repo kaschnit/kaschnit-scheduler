@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/kaschnit/custom-scheduler/quotaawarepreempt"
+	"github.com/kaschnit/custom-scheduler/plugin/quotaawarepreempt"
 	"k8s.io/component-base/cli"
 	scheduler "k8s.io/kubernetes/cmd/kube-scheduler/app"
 )
