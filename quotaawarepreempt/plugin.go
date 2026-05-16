@@ -6,12 +6,10 @@ import (
 	"sync"
 
 	configv1 "github.com/kaschnit/custom-scheduler/apis/config/v1"
-	"github.com/kaschnit/custom-scheduler/internal/podutil"
 	"github.com/kaschnit/custom-scheduler/internal/resconv"
 	"github.com/kaschnit/custom-scheduler/quotaawarepreempt/queue"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/cache"
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
@@ -29,12 +27,14 @@ const (
 // Plugin is a kube-scheduler framework plugin for quota-aware preemption.
 type Plugin struct {
 	sync.RWMutex
-	queueMgr queue.Manager
-	logger   klog.Logger
-	fh       fwk.Handle
-	args     configv1.QuotaAwarePreemptionArgs
+	queueMgr         *queue.Manager
+	podChangeHandler *podChangeHandler
+	logger           klog.Logger
+	fh               fwk.Handle
+	args             configv1.QuotaAwarePreemptionArgs
 }
 
+// Validate plugin implementation so multipoint configuration works as expected.
 var (
 	_ fwk.PreFilterPlugin     = (*Plugin)(nil)
 	_ fwk.PreFilterExtensions = (*Plugin)(nil)
@@ -52,54 +52,30 @@ func NewPlugin(ctx context.Context, rawArgs runtime.Object, fh fwk.Handle) (fwk.
 		return nil, err
 	}
 
-	plugin := Plugin{
-		queueMgr: *queue.NewManager(),
-		logger:   logger,
-		fh:       fh,
-		args:     args,
-	}
-
-	logger.Info("Setting up pod informer for plugin")
-
-	podInformer := fh.SharedInformerFactory().Core().V1().Pods().Informer()
-	if _, err := podInformer.AddEventHandler(
-		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj any) bool {
-				switch t := obj.(type) {
-				case *corev1.Pod:
-					return len(t.Spec.NodeName) > 0
-				case cache.DeletedFinalStateUnknown:
-					if pod, ok := t.Obj.(*corev1.Pod); ok {
-						return len(pod.Spec.NodeName) > 0
-					}
-					return false
-				default:
-					return false
-				}
-			},
-			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc:    plugin.informerAddPod,
-				UpdateFunc: plugin.informerUpdatePod,
-				DeleteFunc: plugin.informerDeletePod,
-			},
-		},
-	); err != nil {
-		return nil, err
-	}
-
-	logger.Info("Setting up queues for plugin")
-
+	logger.Info("Setting up queue manager for plugin")
+	queueMgr := queue.NewManager()
 	// Init quotas from scheduler config.
 	// TODO: move to a custom resource with informer to make this nicer.
 	//	Custom resource will allow updating quotas without restarting the scheduler.
 	//	It will also allow easier configuration generally.
 	for name, queue := range args.Queues {
-		plugin.queueMgr.SetQuota(name, queue.Quota.Max)
+		queueMgr.SetQuota(name, queue.Quota.Max)
+	}
+
+	logger.Info("Setting up pod change handler for plugin")
+	podChangeHandler, err := newPodChangeHandler(fh.SharedInformerFactory().Core().V1().Pods(), queueMgr)
+	if err != nil {
+		return nil, err
 	}
 
 	logger.Info("Initialized plugin")
-
-	return &plugin, nil
+	return &Plugin{
+		queueMgr:         queueMgr,
+		podChangeHandler: podChangeHandler,
+		logger:           logger,
+		fh:               fh,
+		args:             args,
+	}, nil
 }
 
 // Name returns name of the plugin.
@@ -317,62 +293,4 @@ func (plugin *Plugin) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWit
 		// 	If quotas are dynamic, than any changes to quotas may cause
 		// 	previously-unschedulable pods to become schedulable.
 	}, nil
-}
-
-func (plugin *Plugin) informerAddPod(obj any) {
-	ctx := context.Background()
-	logger := klog.FromContext(ctx)
-
-	pod, ok := obj.(*corev1.Pod)
-	if !ok {
-		logger.Info("failed to handle pod added, got unexpected object",
-			"obj", obj)
-	}
-
-	if err := plugin.queueMgr.AddPodIfNotPresent(pod); err != nil {
-		logger.Error(err, "Failed to add Pod to its associated quota",
-			"pod", klog.KObj(pod))
-	}
-}
-
-func (plugin *Plugin) informerUpdatePod(oldObj, newObj any) {
-	ctx := context.Background()
-	logger := klog.FromContext(ctx)
-
-	oldPod, ok := oldObj.(*corev1.Pod)
-	if !ok {
-		logger.Info("failed to handle pod updated, got unexpected old object",
-			"oldObj", oldObj)
-	}
-
-	newPod, ok := newObj.(*corev1.Pod)
-	if !ok {
-		logger.Info("failed to handle pod updated, got unexpected new object",
-			"newObj", newObj)
-	}
-
-	if podutil.IsTerminal(oldPod.Status.Phase) || podutil.IsNonTerminal(newPod.Status.Phase) {
-		return
-	}
-
-	if err := plugin.queueMgr.DeletePodIfPresent(newPod); err != nil {
-		logger.Error(err, "Failed to delete Pod from its associated quota",
-			"pod", klog.KObj(newPod))
-	}
-}
-
-func (plugin *Plugin) informerDeletePod(obj any) {
-	ctx := context.Background()
-	logger := klog.FromContext(ctx)
-
-	pod, ok := obj.(*corev1.Pod)
-	if !ok {
-		logger.Info("failed to handle pod added, got unexpected object",
-			"obj", obj)
-	}
-
-	if err := plugin.queueMgr.DeletePodIfPresent(pod); err != nil {
-		logger.Error(err, "Failed to delete Pod from its associated quota",
-			"pod", klog.KObj(pod))
-	}
 }
