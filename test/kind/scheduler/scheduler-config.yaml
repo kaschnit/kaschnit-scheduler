@@ -17,7 +17,7 @@ profiles:
   pluginConfig:
   - name: QuotaAwarePreemption
     args:
-      apiVersion: schedulingconfig.kaschnit.github.io/v1
+      apiVersion: scheduling.kaschnit.github.io/v1
       kind: QuotaAwarePreemptionArgs
       preemption:
         enableAsyncPreemption: true
