@@ -11,7 +11,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// podChangeHandler is used to handle queue changes to keep the plugin in sync.
+// queueChangeHandler is used to handle queue changes to keep the plugin in sync.
 type queueChangeHandler struct {
 	queueMgr *queue.Manager
 }
