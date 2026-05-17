@@ -19,8 +19,8 @@ Run `make kind-deploy`.
 Quotas configured in `KubeSchedulerConfiguration`. Each "queue" has a quota configured and the sum of pods in that queue cannot exceed quota.
 
 1. Run `make kind deploy`
-1. Run `kubectl create -f test/kind/preemptor.yaml` to create a pod (can't be preempted)
-1. Run `kubectl create -f test/kind/victim.yaml` to create another pod (can't preempt)
+1. Run `kubectl create -f test/kind/pods/preemptor.yaml` to create a pod (can't be preempted)
+1. Run `kubectl create -f test/kind/pods/victim.yaml` to create another pod (can't preempt)
 
 Notice that `victim` pod is unschedulable due to quota exceeded.
 
@@ -29,8 +29,8 @@ Notice that `victim` pod is unschedulable due to quota exceeded.
 Preemption case: there is some capacity left, but a queue exceeds its quota. In this case, a preemptor submitted to that queue can be scheduled by preempting other pods in that same queue.
 
 1. Run `make kind deploy`
-1. Run `kubectl create -f test/kind/victim.yaml` to create another pod (can be preempted)
-1. Run `kubectl create -f test/kind/preemptor.yaml` to create a pod (is a preemptor)
+1. Run `kubectl create -f test/kind/pods/victim.yaml` to create another pod (can be preempted)
+1. Run `kubectl create -f test/kind/pods/preemptor.yaml` to create a pod (is a preemptor)
 
 Notice that `preemptor` pod preempts `victim` because `preemptor` can't schedule to to quota.
 
