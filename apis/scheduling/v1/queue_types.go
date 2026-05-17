@@ -14,7 +14,7 @@ type QueueQuotaConfig struct {
 type QueueQuotaStatus struct {
 	// Used is the used quota for this queue.
 	// +optional
-	Used corev1.ResourceList `json:"used"`
+	Used corev1.ResourceList `json:"used,omitempty"`
 }
 
 type QueuePreemptionConfig struct {
@@ -41,6 +41,7 @@ type QueueStatus struct {
 }
 
 // +genclient
+// +genclient:nonNamespaced
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster

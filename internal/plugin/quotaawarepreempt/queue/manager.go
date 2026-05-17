@@ -3,6 +3,7 @@ package queue
 import (
 	"errors"
 	"fmt"
+	"iter"
 	"sync"
 
 	configv1 "github.com/kaschnit/kaschnit-scheduler/apis/config/v1"
@@ -58,6 +59,10 @@ func (qm *Manager) Set(queue *Queue) {
 	qm.Lock()
 	defer qm.Unlock()
 
+	qm.set(queue)
+}
+
+func (qm *Manager) set(queue *Queue) {
 	if queue != nil {
 		qm.queueByName[queue.Name] = queue
 	}
@@ -68,6 +73,18 @@ func (qm *Manager) Delete(name string) {
 	defer qm.Unlock()
 
 	qm.delete(name)
+}
+
+func (qm *Manager) QueueIter() iter.Seq[*Queue] {
+	mgrClone := qm.Clone()
+
+	return func(yield func(*Queue) bool) {
+		for _, q := range mgrClone.queueByName {
+			if !yield(q) {
+				return
+			}
+		}
+	}
 }
 
 func (qm *Manager) delete(name string) {
@@ -130,14 +147,14 @@ func (qm *Manager) deletePodIfPresentNoLock(pod *corev1.Pod) error {
 
 // Clone creates a clone of the [Manager].
 func (qm *Manager) Clone() *Manager {
-	quotaMgrClone := NewManager()
+	qmClone := NewManager()
 
 	qm.RLock()
 	defer qm.RUnlock()
 
-	for queueName, queue := range qm.queueByName {
-		quotaMgrClone.queueByName[queueName] = queue.Clone()
+	for _, q := range qm.queueByName {
+		qmClone.set(q.Clone())
 	}
 
-	return quotaMgrClone
+	return qmClone
 }

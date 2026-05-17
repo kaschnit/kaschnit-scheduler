@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	configv1 "github.com/kaschnit/kaschnit-scheduler/apis/config/v1"
-	schedulingclients "github.com/kaschnit/kaschnit-scheduler/internal/generated/clients/scheduling"
+	schedclients "github.com/kaschnit/kaschnit-scheduler/internal/generated/clients/scheduling"
 	schedinformers "github.com/kaschnit/kaschnit-scheduler/internal/generated/informers/externalversions"
 	"github.com/kaschnit/kaschnit-scheduler/internal/plugin/quotaawarepreempt/queue"
 	"github.com/kaschnit/kaschnit-scheduler/internal/resconv"
@@ -68,13 +68,15 @@ func NewPlugin(ctx context.Context, rawArgs runtime.Object, fh fwk.Handle) (fwk.
 	}
 
 	logger.Info("Setting up queue change handler for plugin")
-	schedulingClient, err := schedulingclients.NewForConfig(fh.KubeConfig())
+	schedClientset, err := schedclients.NewForConfig(fh.KubeConfig())
 	if err != nil {
 		return nil, err
 	}
 
-	schedInformerFactory := schedinformers.NewSharedInformerFactory(schedulingClient, 0)
+	schedInformerFactory := schedinformers.NewSharedInformerFactory(schedClientset, 0)
 	queueChangeHandler, err := newQueueChangeHandler(
+		ctx,
+		schedClientset.SchedulingV1(),
 		schedInformerFactory.Scheduling().V1().Queues(),
 		queueMgr)
 	if err != nil {
