@@ -75,6 +75,12 @@ rules:
 - apiGroups: ["scheduling.k8s.io"]
   resources: ["priorityclasses"]
   verbs: ["get", "list", "watch"]
+- apiGroups: ["scheduling.kaschnit.github.io"]
+  resources: ["queues"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["scheduling.kaschnit.github.io"]
+  resources: ["queues/status"]
+  verbs: ["get", "update", "patch"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1

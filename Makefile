@@ -22,11 +22,15 @@ CMD := $(CURDIR)/cmd/scheduler
 ## Location for build artifacts
 BUILD_DIR := $(CURDIR)/build
 
+# Binary
 LOCALBIN_DIR := $(BUILD_DIR)/bin
 
 # Image
 IMG_DIR := $(BUILD_DIR)/image
 IMG_TAR_FILE := $(IMG_DIR)/scheduler.tar
+
+# CRD
+CRD_DIR := $(BUILD_DIR)/crd
 
 $(BUILD_DIR):
 	mkdir -p "$(BUILD_DIR)"
@@ -36,6 +40,9 @@ $(LOCALBIN_DIR):
 
 $(IMG_DIR):
 	mkdir -p "$(IMG_DIR)"
+
+$(CRD_DIR):
+	mkdir -p "$(CRD_DIR)"
 
 ##@ General
 
@@ -52,11 +59,17 @@ clean: ## Clean up files.
 ##@ Development
 
 .PHONY: generate
-generate: controller-gen-objects ## Generate code.
+generate: controller-gen-objects controller-gen-manifests ## Generate code.
 
 .PHONY: controller-gen-objects
 controller-gen-objects:
 	$(CONTROLLER_GEN) object paths=./...
+
+.PHONY: controller-gen-manifests
+controller-gen-manifests: $(CRD_DIR)
+	$(CONTROLLER_GEN) paths="./..." \
+		crd:crdVersions=v1 output:crd:artifacts:config=$(CRD_DIR) \
+		rbac:roleName=custom-scheduler-role output:rbac:artifacts:config=$(CRD_DIR)	
 
 .PHONY: go-tidy
 go-tidy: generate ## Tidy go.mod and go.sum.

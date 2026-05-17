@@ -32,6 +32,7 @@ type QueueStatus struct{}
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster
 
 type Queue struct {
 	metav1.TypeMeta   `json:",inline"`
