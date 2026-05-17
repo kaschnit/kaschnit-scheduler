@@ -76,7 +76,7 @@ controller-gen-objects:
 controller-gen-manifests: $(CRD_DIR)
 	$(CONTROLLER_GEN) paths="./..." \
 		crd:crdVersions=v1 output:crd:artifacts:config=$(CRD_DIR) \
-		rbac:roleName=custom-scheduler-role output:rbac:artifacts:config=$(CRD_DIR)	
+		rbac:roleName=custom-scheduler output:rbac:artifacts:config=$(CRD_DIR)	
 
 .PHONY: go-tidy
 go-tidy: generate ## Tidy go.mod and go.sum.
@@ -120,7 +120,7 @@ run: generate ## Run a controller from your host.
 .PHONY: image
 image: PUSH := false
 image: generate $(IMG_DIR) ## Build an image and optionally push it.
-	KO_DOCKER_REPO=kschnitzer-custom-scheduler \
+	KO_DOCKER_REPO=kaschnit-custom-scheduler \
 		$(KO) build \
 			--push=$(PUSH) \
 			--platform=linux/$(shell $(GO) env GOARCH) \
@@ -131,12 +131,12 @@ image: generate $(IMG_DIR) ## Build an image and optionally push it.
 
 .PHONY: chart
 chart: generate image
-	find deploy/ $(CRD_DIR)/ \
+	find manifests/crds/ manifests/scheduler/ \
 		-type f \
 		-name "*.yaml" \
 		-exec cat {} + \
 		| \
-		$(HELMIFY) -crd-dir $(CHARTS_DIR)/custom-scheduler
+		$(HELMIFY) -crd-dir -image-pull-secrets $(CHARTS_DIR)/custom-scheduler
 
 .PHONY: kind-delete
 kind-delete:

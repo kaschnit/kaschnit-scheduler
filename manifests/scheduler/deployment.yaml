@@ -2,9 +2,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: scheduler
+  namespace: custom-scheduler
   labels:
     component: scheduler
-  name: custom-scheduler
 spec:
   selector:
     matchLabels:
@@ -19,7 +20,7 @@ spec:
       serviceAccountName: custom-scheduler
       containers:
       - name: scheduler
-        image: kschnitzer-custom-scheduler:development
+        image: kaschnit-custom-scheduler:development
         args:
         - --config=/etc/kubernetes/scheduler-config.yaml
         imagePullPolicy: IfNotPresent
