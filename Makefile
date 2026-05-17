@@ -13,6 +13,7 @@ GOLANGCI_LINT ?= $(GO) tool github.com/golangci/golangci-lint/v2/cmd/golangci-li
 KO ?= $(GO) tool github.com/google/ko
 KUBEBUILDER ?= $(GO) tool sigs.k8s.io/kubebuilder/v4
 CONTROLLER_GEN ?= $(GO) tool sigs.k8s.io/controller-tools/cmd/controller-gen
+HELMIFY ?= $(GO) tool github.com/arttor/helmify/cmd/helmify
 
 # KIND
 KIND_CLUSTER_NAME = "kind-scheduler-test"
@@ -29,8 +30,11 @@ LOCALBIN_DIR := $(BUILD_DIR)/bin
 IMG_DIR := $(BUILD_DIR)/image
 IMG_TAR_FILE := $(IMG_DIR)/scheduler.tar
 
+# Helm
+CHARTS_DIR := $(BUILD_DIR)/charts
+
 # CRD
-CRD_DIR := $(BUILD_DIR)/crd
+CRD_DIR := $(BUILD_DIR)/crds
 
 $(BUILD_DIR):
 	mkdir -p "$(BUILD_DIR)"
@@ -43,6 +47,9 @@ $(IMG_DIR):
 
 $(CRD_DIR):
 	mkdir -p "$(CRD_DIR)"
+
+$(CHARTS_DIR):
+	mkdir -p "$(CHARTS_DIR)"
 
 ##@ General
 
@@ -121,6 +128,15 @@ image: generate $(IMG_DIR) ## Build an image and optionally push it.
 			--bare \
 			--tags=development \
 			$(CMD)
+
+.PHONY: chart
+chart: generate image
+	find deploy/ $(CRD_DIR)/ \
+		-type f \
+		-name "*.yaml" \
+		-exec cat {} + \
+		| \
+		$(HELMIFY) -crd-dir $(CHARTS_DIR)/custom-scheduler
 
 .PHONY: kind-delete
 kind-delete:
