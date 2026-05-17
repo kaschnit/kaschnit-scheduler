@@ -7,6 +7,9 @@ tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 	github.com/google/ko
 	helm.sh/helm/v3/cmd/helm
+	k8s.io/code-generator/cmd/client-gen
+	k8s.io/code-generator/cmd/informer-gen
+	k8s.io/code-generator/cmd/lister-gen
 	k8s.io/kubernetes/cmd/kubectl
 	sigs.k8s.io/controller-tools/cmd/controller-gen
 	sigs.k8s.io/kind

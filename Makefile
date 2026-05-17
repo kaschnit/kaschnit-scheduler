@@ -13,8 +13,13 @@ GOLANGCI_LINT ?= $(GO) tool github.com/golangci/golangci-lint/v2/cmd/golangci-li
 KO ?= $(GO) tool github.com/google/ko
 KUBEBUILDER ?= $(GO) tool sigs.k8s.io/kubebuilder/v4
 CONTROLLER_GEN ?= $(GO) tool sigs.k8s.io/controller-tools/cmd/controller-gen
+CLIENT_GEN ?= $(GO) tool k8s.io/code-generator/cmd/client-gen
+LISTER_GEN ?= $(GO) tool k8s.io/code-generator/cmd/lister-gen
+INFORMER_GEN ?= $(GO) tool k8s.io/code-generator/cmd/informer-gen
 HELM ?= $(GO) tool helm.sh/helm/v3/cmd/helm
 HELMIFY ?= $(GO) tool github.com/arttor/helmify/cmd/helmify
+
+MODULE := $(shell $(GO) list -m)
 
 # KIND
 KIND_CLUSTER_NAME = "kind-scheduler-test"
@@ -62,12 +67,13 @@ help: ## Display this help.
 clean: ## Clean up files.
 	find . -name .DS_Store -type f -delete
 	find . -name zz_generated.*.go -type f -delete
+	rm -rf $(CURDIR)/internal/generated
 	rm -rf $(BUILD_DIR)
 
 ##@ Development
 
 .PHONY: generate
-generate: controller-gen-objects controller-gen-manifests ## Generate code.
+generate: controller-gen-objects controller-gen-manifests generate-k8s-clients ## Generate code.
 
 .PHONY: controller-gen-objects
 controller-gen-objects:
@@ -78,6 +84,34 @@ controller-gen-manifests: $(CRD_DIR)
 	$(CONTROLLER_GEN) paths="./..." \
 		crd:crdVersions=v1 output:crd:artifacts:config=$(CRD_DIR) \
 		rbac:roleName=kaschnit-scheduler output:rbac:artifacts:config=$(CRD_DIR)	
+
+.PHONY: generate-k8s-clients
+generate-k8s-clients: k8s-client-gen k8s-lister-gen k8s-informer-gen
+
+.PHONY: k8s-client-gen
+k8s-client-gen: controller-gen-objects
+	$(CLIENT_GEN) \
+		--clientset-name "v1" \
+		--input-base $(MODULE)/apis \
+		--input scheduling/v1 \
+		--output-dir ./internal/generated/clients/scheduling \
+		--output-pkg $(MODULE)/internal/generated/clients/scheduling
+
+.PHONY: k8s-lister-gen
+k8s-lister-gen: controller-gen-objects
+	$(LISTER_GEN) \
+		--output-dir ./internal/generated/listers \
+		--output-pkg $(MODULE)/internal/generated/listers \
+		./apis/scheduling/v1
+
+.PHONY: k8s-informer-gen
+k8s-informer-gen: controller-gen-objects k8s-client-gen k8s-lister-gen
+	$(INFORMER_GEN) \
+        --versioned-clientset-package $(MODULE)/internal/generated/clients/scheduling/v1 \
+        --listers-package $(MODULE)/internal/generated/listers \
+        --output-dir ./internal/generated/informers \
+        --output-pkg $(MODULE)/internal/generated/informers \
+        ./apis/scheduling/v1
 
 .PHONY: go-tidy
 go-tidy: generate ## Tidy go.mod and go.sum.
@@ -132,7 +166,7 @@ image: generate $(IMG_DIR) ## Build an image and optionally push it.
 
 .PHONY: chart
 chart: generate image
-	find manifests/crds/ manifests/scheduler/ \
+	find $(CRD_DIR)/ manifests/scheduler/ \
 		-type f \
 		-name "*.yaml" \
 		-exec cat {} + \
@@ -150,8 +184,8 @@ kind-create: kind-delete
 .PHONY: kind-deploy
 kind-deploy: image chart kind-create
 	$(KIND) load image-archive $(IMG_TAR_FILE) --name "$(KIND_CLUSTER_NAME)"
-	$(KUBECTL) apply -f test/kind/base/
 	$(HELM) install kaschnit-scheduler $(CHARTS_DIR)/kaschnit-scheduler \
 		--values test/kind/values.yaml \
 		--namespace kaschnit-scheduler \
 		--create-namespace
+	$(KUBECTL) apply -f test/kind/base/

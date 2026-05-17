@@ -1,3 +1,4 @@
+// +kwrapper:package=gate
 // +kubebuilder:object:generate=true
 // +groupName=scheduling.kaschnit.github.io
 package v1
@@ -23,4 +24,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil
+}
+
+func Resource(resource string) schema.GroupResource {
+	return SchemeGroupVersion.WithResource(resource).GroupResource()
 }
