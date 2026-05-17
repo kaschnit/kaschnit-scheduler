@@ -6,9 +6,15 @@ import (
 )
 
 type QueueQuotaConfig struct {
-	// Max is the quota for this queue.
+	// Max is the max quota for this queue.
 	// +optional
 	Max corev1.ResourceList `json:"max"`
+}
+
+type QueueQuotaStatus struct {
+	// Used is the used quota for this queue.
+	// +optional
+	Used corev1.ResourceList `json:"used"`
 }
 
 type QueuePreemptionConfig struct {
@@ -28,7 +34,11 @@ type QueueSpec struct {
 	Preemption QueuePreemptionConfig `json:"preemption,omitempty"`
 }
 
-type QueueStatus struct{}
+type QueueStatus struct {
+	// Quota is the queue's quota status.
+	// +optional
+	Quota QueueQuotaStatus `json:"quota,omitempty"`
+}
 
 // +genclient
 // +kubebuilder:object:root=true

@@ -6,6 +6,8 @@ import (
 	"sync"
 
 	configv1 "github.com/kaschnit/kaschnit-scheduler/apis/config/v1"
+	schedulingclients "github.com/kaschnit/kaschnit-scheduler/internal/generated/clients/scheduling"
+	schedinformers "github.com/kaschnit/kaschnit-scheduler/internal/generated/informers/externalversions"
 	"github.com/kaschnit/kaschnit-scheduler/internal/plugin/quotaawarepreempt/queue"
 	"github.com/kaschnit/kaschnit-scheduler/internal/resconv"
 	"github.com/kaschnit/kaschnit-scheduler/internal/resmath"
@@ -28,11 +30,12 @@ const (
 // Plugin is a kube-scheduler framework plugin for quota-aware preemption.
 type Plugin struct {
 	sync.RWMutex
-	queueMgr         *queue.Manager
-	podChangeHandler *podChangeHandler
-	logger           klog.Logger
-	fh               fwk.Handle
-	args             configv1.QuotaAwarePreemptionArgs
+	queueMgr           *queue.Manager
+	podChangeHandler   *podChangeHandler
+	queueChangeHandler *queueChangeHandler
+	logger             klog.Logger
+	fh                 fwk.Handle
+	args               configv1.QuotaAwarePreemptionArgs
 }
 
 // Validate plugin implementation so multipoint configuration works as expected.
@@ -55,27 +58,40 @@ func NewPlugin(ctx context.Context, rawArgs runtime.Object, fh fwk.Handle) (fwk.
 
 	logger.Info("Setting up queue manager for plugin")
 	queueMgr := queue.NewManager()
-	// Init quotas from scheduler config.
-	// TODO: move to a custom resource with informer to make this nicer.
-	//	Custom resource will allow updating quotas without restarting the scheduler.
-	//	It will also allow easier configuration generally.
-	for name, queue := range args.Queues {
-		queueMgr.SetQuota(name, queue.Quota.Max)
-	}
 
 	logger.Info("Setting up pod change handler for plugin")
-	podChangeHandler, err := newPodChangeHandler(fh.SharedInformerFactory().Core().V1().Pods(), queueMgr)
+	podChangeHandler, err := newPodChangeHandler(
+		fh.SharedInformerFactory().Core().V1().Pods(),
+		queueMgr)
 	if err != nil {
 		return nil, err
 	}
 
+	logger.Info("Setting up queue change handler for plugin")
+	schedulingClient, err := schedulingclients.NewForConfig(fh.KubeConfig())
+	if err != nil {
+		return nil, err
+	}
+
+	schedInformerFactory := schedinformers.NewSharedInformerFactory(schedulingClient, 0)
+	queueChangeHandler, err := newQueueChangeHandler(
+		schedInformerFactory.Scheduling().V1().Queues(),
+		queueMgr)
+	if err != nil {
+		return nil, err
+	}
+
+	schedInformerFactory.Start(ctx.Done())
+	schedInformerFactory.WaitForCacheSync(ctx.Done())
+
 	logger.Info("Initialized plugin")
 	return &Plugin{
-		queueMgr:         queueMgr,
-		podChangeHandler: podChangeHandler,
-		logger:           logger,
-		fh:               fh,
-		args:             args,
+		queueMgr:           queueMgr,
+		podChangeHandler:   podChangeHandler,
+		queueChangeHandler: queueChangeHandler,
+		logger:             logger,
+		fh:                 fh,
+		args:               args,
 	}, nil
 }
 

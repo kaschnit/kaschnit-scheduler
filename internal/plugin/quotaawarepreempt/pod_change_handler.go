@@ -101,7 +101,7 @@ func (handler *podChangeHandler) deletePod(obj any) {
 
 	pod, ok := obj.(*corev1.Pod)
 	if !ok {
-		logger.Info("failed to handle pod added, got unexpected object",
+		logger.Info("failed to handle pod deleted, got unexpected object",
 			"obj", obj)
 	}
 

@@ -3,14 +3,11 @@ package queue
 import (
 	"errors"
 	"fmt"
-	"math"
 	"sync"
 
 	configv1 "github.com/kaschnit/kaschnit-scheduler/apis/config/v1"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
 var (
@@ -57,28 +54,24 @@ func (qm *Manager) get(pod *corev1.Pod) *Queue {
 }
 
 // Set creates or updates the quota for the queeu.
-func (qm *Manager) SetQuota(queueName string, max corev1.ResourceList) {
-	if max == nil {
-		max = corev1.ResourceList{
-			corev1.ResourceCPU:              *resource.NewMilliQuantity(math.MaxInt64, resource.DecimalSI),
-			corev1.ResourceMemory:           *resource.NewQuantity(math.MaxInt64, resource.BinarySI),
-			corev1.ResourceEphemeralStorage: *resource.NewQuantity(math.MaxInt64, resource.BinarySI),
-			corev1.ResourcePods:             *resource.NewQuantity(math.MaxInt64, resource.DecimalSI),
-		}
-	}
-
+func (qm *Manager) Set(queue *Queue) {
 	qm.Lock()
 	defer qm.Unlock()
 
-	q := qm.queueByName[queueName]
-	if q == nil {
-		qm.queueByName[queueName] = &Queue{
-			Name:  queueName,
-			Quota: NewQuota(max),
-		}
-	} else {
-		q.Quota.Max = framework.NewResource(max)
+	if queue != nil {
+		qm.queueByName[queue.Name] = queue
 	}
+}
+
+func (qm *Manager) Delete(name string) {
+	qm.Lock()
+	defer qm.Unlock()
+
+	qm.delete(name)
+}
+
+func (qm *Manager) delete(name string) {
+	delete(qm.queueByName, name)
 }
 
 // AddPodIfNotPresent adds the pod to the quota if the pod has a quota.

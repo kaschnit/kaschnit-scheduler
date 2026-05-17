@@ -39,8 +39,8 @@ IMG_TAR_FILE := $(IMG_DIR)/scheduler.tar
 # Helm
 CHARTS_DIR := $(BUILD_DIR)/charts
 
-# CRD
-CRD_DIR := $(BUILD_DIR)/crds
+# Generated manifests
+BUILD_MANIFEST_DIR := $(BUILD_DIR)/manifests
 
 $(BUILD_DIR):
 	mkdir -p "$(BUILD_DIR)"
@@ -51,8 +51,8 @@ $(LOCALBIN_DIR):
 $(IMG_DIR):
 	mkdir -p "$(IMG_DIR)"
 
-$(CRD_DIR):
-	mkdir -p "$(CRD_DIR)"
+$(BUILD_MANIFEST_DIR):
+	mkdir -p "$(BUILD_MANIFEST_DIR)"
 
 $(CHARTS_DIR):
 	mkdir -p "$(CHARTS_DIR)"
@@ -73,17 +73,16 @@ clean: ## Clean up files.
 ##@ Development
 
 .PHONY: generate
-generate: controller-gen-objects controller-gen-manifests generate-k8s-clients ## Generate code.
+generate: controller-gen-objects generate-k8s-clients controller-gen-manifests ## Generate code.
 
 .PHONY: controller-gen-objects
 controller-gen-objects:
-	$(CONTROLLER_GEN) object paths=./...
+	$(CONTROLLER_GEN) object paths=./apis/...
 
 .PHONY: controller-gen-manifests
-controller-gen-manifests: $(CRD_DIR)
-	$(CONTROLLER_GEN) paths="./..." \
-		crd:crdVersions=v1 output:crd:artifacts:config=$(CRD_DIR) \
-		rbac:roleName=kaschnit-scheduler output:rbac:artifacts:config=$(CRD_DIR)	
+controller-gen-manifests: controller-gen-objects generate-k8s-clients $(BUILD_MANIFEST_DIR)
+	$(CONTROLLER_GEN) paths=./apis/... crd:crdVersions=v1 output:crd:artifacts:config=$(BUILD_MANIFEST_DIR)
+	$(CONTROLLER_GEN) paths=./cmd/... rbac:roleName=kaschnit-scheduler output:rbac:artifacts:config=$(BUILD_MANIFEST_DIR)	
 
 .PHONY: generate-k8s-clients
 generate-k8s-clients: k8s-client-gen k8s-lister-gen k8s-informer-gen
@@ -91,11 +90,11 @@ generate-k8s-clients: k8s-client-gen k8s-lister-gen k8s-informer-gen
 .PHONY: k8s-client-gen
 k8s-client-gen: controller-gen-objects
 	$(CLIENT_GEN) \
-		--clientset-name "v1" \
+		--clientset-name "scheduling" \
 		--input-base $(MODULE)/apis \
 		--input scheduling/v1 \
-		--output-dir ./internal/generated/clients/scheduling \
-		--output-pkg $(MODULE)/internal/generated/clients/scheduling
+		--output-dir ./internal/generated/clients \
+		--output-pkg $(MODULE)/internal/generated/clients
 
 .PHONY: k8s-lister-gen
 k8s-lister-gen: controller-gen-objects
@@ -107,7 +106,7 @@ k8s-lister-gen: controller-gen-objects
 .PHONY: k8s-informer-gen
 k8s-informer-gen: controller-gen-objects k8s-client-gen k8s-lister-gen
 	$(INFORMER_GEN) \
-        --versioned-clientset-package $(MODULE)/internal/generated/clients/scheduling/v1 \
+        --versioned-clientset-package $(MODULE)/internal/generated/clients/scheduling \
         --listers-package $(MODULE)/internal/generated/listers \
         --output-dir ./internal/generated/informers \
         --output-pkg $(MODULE)/internal/generated/informers \
@@ -166,7 +165,7 @@ image: generate $(IMG_DIR) ## Build an image and optionally push it.
 
 .PHONY: chart
 chart: generate image
-	find $(CRD_DIR)/ manifests/scheduler/ \
+	find $(BUILD_MANIFEST_DIR)/ manifests/ \
 		-type f \
 		-name "*.yaml" \
 		-exec cat {} + \
@@ -188,4 +187,4 @@ kind-deploy: image chart kind-create
 		--values test/kind/values.yaml \
 		--namespace kaschnit-scheduler \
 		--create-namespace
-	$(KUBECTL) apply -f test/kind/base/
+	$(KUBECTL) apply -f test/kind/base

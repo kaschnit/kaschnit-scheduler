@@ -1,9 +1,12 @@
 package queue
 
 import (
+	"math"
+
 	"github.com/kaschnit/kaschnit-scheduler/internal/resconv"
 	"github.com/kaschnit/kaschnit-scheduler/internal/resmath"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
@@ -21,6 +24,15 @@ type Quota struct {
 
 // NewQuota creates a new [Quota].
 func NewQuota(max corev1.ResourceList) *Quota {
+	if max == nil {
+		max = corev1.ResourceList{
+			corev1.ResourceCPU:              *resource.NewMilliQuantity(math.MaxInt64, resource.DecimalSI),
+			corev1.ResourceMemory:           *resource.NewQuantity(math.MaxInt64, resource.BinarySI),
+			corev1.ResourceEphemeralStorage: *resource.NewQuantity(math.MaxInt64, resource.BinarySI),
+			corev1.ResourcePods:             *resource.NewQuantity(math.MaxInt64, resource.DecimalSI),
+		}
+	}
+
 	return &Quota{
 		Max:  framework.NewResource(max),
 		Used: framework.NewResource(nil),
