@@ -1,7 +1,7 @@
 package v1
 
 import (
-	"github.com/kaschnit/custom-scheduler/apis/scheduling"
+	"github.com/kaschnit/kaschnit-scheduler/apis/scheduling"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )

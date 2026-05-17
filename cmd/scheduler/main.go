@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/kaschnit/custom-scheduler/internal/plugin/quotaawarepreempt"
+	"github.com/kaschnit/kaschnit-scheduler/internal/plugin/quotaawarepreempt"
 	"k8s.io/component-base/cli"
 	scheduler "k8s.io/kubernetes/cmd/kube-scheduler/app"
 )
@@ -12,9 +12,9 @@ import (
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch;update
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch;update
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=create
-// +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,resourceNames=custom-scheduler,verbs=get;update
+// +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,resourceNames=kaschnit-scheduler,verbs=get;update
 // +kubebuilder:rbac:groups="",resources=endpoints,verbs=create
-// +kubebuilder:rbac:groups="",resources=endpoints,resourceNames=custom-scheduler,verbs=get;update
+// +kubebuilder:rbac:groups="",resources=endpoints,resourceNames=kaschnit-scheduler,verbs=get;update
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=delete;get;list;watch;update
 // +kubebuilder:rbac:groups="",resources=bindings;pods/binding,verbs=create

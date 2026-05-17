@@ -1,8 +1,8 @@
 package queue
 
 import (
-	"github.com/kaschnit/custom-scheduler/internal/resconv"
-	"github.com/kaschnit/custom-scheduler/internal/resmath"
+	"github.com/kaschnit/kaschnit-scheduler/internal/resconv"
+	"github.com/kaschnit/kaschnit-scheduler/internal/resmath"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/scheduler/framework"

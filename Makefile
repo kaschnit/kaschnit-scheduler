@@ -77,7 +77,7 @@ controller-gen-objects:
 controller-gen-manifests: $(CRD_DIR)
 	$(CONTROLLER_GEN) paths="./..." \
 		crd:crdVersions=v1 output:crd:artifacts:config=$(CRD_DIR) \
-		rbac:roleName=custom-scheduler output:rbac:artifacts:config=$(CRD_DIR)	
+		rbac:roleName=kaschnit-scheduler output:rbac:artifacts:config=$(CRD_DIR)	
 
 .PHONY: go-tidy
 go-tidy: generate ## Tidy go.mod and go.sum.
@@ -121,7 +121,7 @@ run: generate ## Run a controller from your host.
 .PHONY: image
 image: PUSH := false
 image: generate $(IMG_DIR) ## Build an image and optionally push it.
-	KO_DOCKER_REPO=kaschnit-custom-scheduler \
+	KO_DOCKER_REPO=kaschnit-scheduler \
 		$(KO) build \
 			--push=$(PUSH) \
 			--platform=linux/$(shell $(GO) env GOARCH) \
@@ -137,7 +137,7 @@ chart: generate image
 		-name "*.yaml" \
 		-exec cat {} + \
 		| \
-		$(HELMIFY) -crd-dir -image-pull-secrets $(CHARTS_DIR)/custom-scheduler
+		$(HELMIFY) -crd-dir -image-pull-secrets $(CHARTS_DIR)/kaschnit-scheduler
 
 .PHONY: kind-delete
 kind-delete:
@@ -148,9 +148,10 @@ kind-create: kind-delete
 	$(KIND) create cluster --name "$(KIND_CLUSTER_NAME)"
 
 .PHONY: kind-deploy
-kind-deploy: chart kind-create
+kind-deploy: image chart kind-create
 	$(KIND) load image-archive $(IMG_TAR_FILE) --name "$(KIND_CLUSTER_NAME)"
-	$(KUBECTL) apply -f test/kind/namespace.yaml
-	$(KUBECTL) apply -f test/kind/pc.yaml
-# 	TODO REPLACE WITH HELM COMMAND
-	$(KUBECTL) apply -k test/kind/scheduler
+	$(KUBECTL) apply -f test/kind/base/
+	$(HELM) install kaschnit-scheduler $(CHARTS_DIR)/kaschnit-scheduler \
+		--values test/kind/values.yaml \
+		--namespace kaschnit-scheduler \
+		--create-namespace

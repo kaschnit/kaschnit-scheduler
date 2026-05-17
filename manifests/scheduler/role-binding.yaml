@@ -2,12 +2,11 @@
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: custom-scheduler
+  name: kaschnit-scheduler
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: custom-scheduler
+  name: kaschnit-scheduler
 subjects:
 - kind: ServiceAccount
-  name: custom-scheduler
-  namespace: custom-scheduler
+  name: kaschnit-scheduler

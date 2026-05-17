@@ -3,7 +3,7 @@ package queue_test
 import (
 	"testing"
 
-	"github.com/kaschnit/custom-scheduler/internal/plugin/quotaawarepreempt/queue"
+	"github.com/kaschnit/kaschnit-scheduler/internal/plugin/quotaawarepreempt/queue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"

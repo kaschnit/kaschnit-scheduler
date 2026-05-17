@@ -1,8 +1,8 @@
 package quotaawarepreempt
 
 import (
-	"github.com/kaschnit/custom-scheduler/internal/fwkutil"
-	"github.com/kaschnit/custom-scheduler/internal/plugin/quotaawarepreempt/queue"
+	"github.com/kaschnit/kaschnit-scheduler/internal/fwkutil"
+	"github.com/kaschnit/kaschnit-scheduler/internal/plugin/quotaawarepreempt/queue"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 )

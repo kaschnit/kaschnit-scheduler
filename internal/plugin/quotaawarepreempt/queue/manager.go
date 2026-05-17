@@ -6,7 +6,7 @@ import (
 	"math"
 	"sync"
 
-	configv1 "github.com/kaschnit/custom-scheduler/apis/config/v1"
+	configv1 "github.com/kaschnit/kaschnit-scheduler/apis/config/v1"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"

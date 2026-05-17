@@ -1,15 +1,19 @@
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: scheduler-config
-data:
-  scheduler-config.yaml: |
+scheduler:
+  scheduler:
+    resources:
+      requests:
+        cpu: 1
+        memory: 2Gi
+      limits:
+        cpu: 4
+        memory: 2Gi
+schedulerConfig:
+  schedulerConfigYaml: |-
     ---
     apiVersion: kubescheduler.config.k8s.io/v1
     kind: KubeSchedulerConfiguration
     leaderElection:
-      leaderElect: true
+      leaderElect: false
     profiles:
     - schedulerName: kaschnit-scheduler
       plugins:

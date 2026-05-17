@@ -1,4 +1,4 @@
-# custom-scheduler
+# kaschnit-scheduler
 
 Writing a custom Kubernetes scheduler using the kube-scheduler framework.
 

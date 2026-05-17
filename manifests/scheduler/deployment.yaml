@@ -3,7 +3,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: scheduler
-  namespace: custom-scheduler
   labels:
     component: scheduler
 spec:
@@ -17,10 +16,10 @@ spec:
         component: scheduler
     spec:
       priorityClassName: system-cluster-critical 
-      serviceAccountName: custom-scheduler
+      serviceAccountName: kaschnit-scheduler
       containers:
       - name: scheduler
-        image: kaschnit-custom-scheduler:development
+        image: kaschnit-scheduler:development
         args:
         - --config=/etc/kubernetes/scheduler-config.yaml
         imagePullPolicy: IfNotPresent
@@ -37,11 +36,11 @@ spec:
             scheme: HTTPS
         resources:
           requests:
-            cpu: 1
-            memory: 2Gi
+            cpu: 100m
+            memory: 100Mi
           limits:
-            cpu: 4
-            memory: 2Gi
+            cpu: 100m
+            memory: 100Mi
         securityContext:
           privileged: false
         volumeMounts:
