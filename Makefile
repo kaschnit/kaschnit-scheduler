@@ -13,6 +13,7 @@ GOLANGCI_LINT ?= $(GO) tool github.com/golangci/golangci-lint/v2/cmd/golangci-li
 KO ?= $(GO) tool github.com/google/ko
 KUBEBUILDER ?= $(GO) tool sigs.k8s.io/kubebuilder/v4
 CONTROLLER_GEN ?= $(GO) tool sigs.k8s.io/controller-tools/cmd/controller-gen
+HELM ?= $(GO) tool helm.sh/helm/v3/cmd/helm
 HELMIFY ?= $(GO) tool github.com/arttor/helmify/cmd/helmify
 
 # KIND
@@ -147,8 +148,9 @@ kind-create: kind-delete
 	$(KIND) create cluster --name "$(KIND_CLUSTER_NAME)"
 
 .PHONY: kind-deploy
-kind-deploy: image kind-create
+kind-deploy: chart kind-create
 	$(KIND) load image-archive $(IMG_TAR_FILE) --name "$(KIND_CLUSTER_NAME)"
 	$(KUBECTL) apply -f test/kind/namespace.yaml
 	$(KUBECTL) apply -f test/kind/pc.yaml
+# 	TODO REPLACE WITH HELM COMMAND
 	$(KUBECTL) apply -k test/kind/scheduler
