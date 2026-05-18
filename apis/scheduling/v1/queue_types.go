@@ -12,6 +12,10 @@ type QueueQuotaConfig struct {
 }
 
 type QueueQuotaStatus struct {
+	// EffectiveMax is the effective max resource for this queue.
+	// This takes into account unset resources, cluster capacity, etc.
+	// +optional
+	EffectiveMax corev1.ResourceList `json:"effectiveMax,omitempty"`
 	// Used is the used quota for this queue.
 	// +optional
 	Used corev1.ResourceList `json:"used,omitempty"`

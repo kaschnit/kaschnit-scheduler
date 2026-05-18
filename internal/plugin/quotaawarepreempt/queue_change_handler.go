@@ -25,17 +25,16 @@ type queueChangeHandler struct {
 
 func newQueueChangeHandler(
 	ctx context.Context,
-	client schedv1client.QueueInterface,
-	informer schedv1informers.QueueInformer,
+	queueClient schedv1client.QueueInterface,
+	queueInformer schedv1informers.QueueInformer,
 	queueMgr *queue.Manager,
 ) (*queueChangeHandler, error) {
 	handler := queueChangeHandler{
 		queueMgr:    queueMgr,
-		queueClient: client,
+		queueClient: queueClient,
 	}
 
-	queueInformer := informer.Informer()
-	if _, err := queueInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err := queueInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    handler.addQueue,
 		UpdateFunc: handler.updateQueue,
 		DeleteFunc: handler.deleteQueue,
@@ -60,7 +59,14 @@ func (handler *queueChangeHandler) statusUpdateLoop(ctx context.Context) {
 				statusPatch := schedv1.Queue{
 					Status: schedv1.QueueStatus{
 						Quota: schedv1.QueueQuotaStatus{
-							Used: resconv.ToResourceList(q.Quota.Used),
+							// TODO: account for scalar resources in EffectiveMax.
+							//	We can use a node informer to watch all resources known
+							//	to nodes and set them in the EffectiveMax list if unset.
+							// TODO: account for cluster capacity in EffectiveMax.
+							//	We can use a node informer to watch all nodes and set
+							//	the "effective max" to the sum of all resources.
+							EffectiveMax: resconv.ToResourceList(q.Quota.Max),
+							Used:         resconv.ToResourceList(q.Quota.Used),
 						},
 					},
 				}

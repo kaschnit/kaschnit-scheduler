@@ -36,13 +36,18 @@ func NewQuota(max corev1.ResourceList) *Quota {
 
 func (q *Quota) SetMax(max corev1.ResourceList) {
 	if max == nil {
-		max = corev1.ResourceList{
-			corev1.ResourceCPU:              *resource.NewMilliQuantity(math.MaxInt64, resource.DecimalSI),
-			corev1.ResourceMemory:           *resource.NewQuantity(math.MaxInt64, resource.BinarySI),
-			corev1.ResourceEphemeralStorage: *resource.NewQuantity(math.MaxInt64, resource.BinarySI),
-			corev1.ResourcePods:             *resource.NewQuantity(math.MaxInt64, resource.DecimalSI),
-		}
+		max = corev1.ResourceList{}
 	}
+
+	// By default, we set "unlimited" quota for max.
+	// In [framework.NewResource], unset results in effectively 0 which is not what we want.
+	// So we explicitly set all of the vanilla resource types to unlimited if not explicitly set.
+	// We can get away without setting "scalar" resources (i.e. extended resources) because those
+	// are differentiable based on presence.
+	resmath.SetDefault(max, corev1.ResourceCPU, resource.NewMilliQuantity(math.MaxInt64, resource.DecimalSI))
+	resmath.SetDefault(max, corev1.ResourceMemory, resource.NewQuantity(math.MaxInt64, resource.BinarySI))
+	resmath.SetDefault(max, corev1.ResourceEphemeralStorage, resource.NewQuantity(math.MaxInt64, resource.BinarySI))
+	resmath.SetDefault(max, corev1.ResourcePods, resource.NewQuantity(math.MaxInt64, resource.BinarySI))
 
 	q.Max = framework.NewResource(max)
 }

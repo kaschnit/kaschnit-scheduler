@@ -14,8 +14,8 @@ func ToResourceList(r fwk.Resource) corev1.ResourceList {
 	result := corev1.ResourceList{
 		corev1.ResourceCPU:              *resource.NewMilliQuantity(r.GetMilliCPU(), resource.DecimalSI),
 		corev1.ResourceMemory:           *resource.NewQuantity(r.GetMemory(), resource.BinarySI),
-		corev1.ResourcePods:             *resource.NewQuantity(int64(r.GetAllowedPodNumber()), resource.BinarySI),
 		corev1.ResourceEphemeralStorage: *resource.NewQuantity(r.GetEphemeralStorage(), resource.BinarySI),
+		corev1.ResourcePods:             *resource.NewQuantity(int64(r.GetAllowedPodNumber()), resource.BinarySI),
 	}
 	for rName, rQuant := range r.GetScalarResources() {
 		if corev1helper.IsHugePageResourceName(rName) {
@@ -29,7 +29,11 @@ func ToResourceList(r fwk.Resource) corev1.ResourceList {
 
 // FromPod converts [corev1.Pod] to the [framework.Resource] its requests represent.
 func FromPod(pod *corev1.Pod) *framework.Resource {
-	result := &framework.Resource{}
+	result := &framework.Resource{
+		AllowedPodNumber: 1, // account for pod quotas
+	}
+
 	result.Add(reshelper.PodRequests(pod, reshelper.PodResourcesOptions{}))
+
 	return result
 }

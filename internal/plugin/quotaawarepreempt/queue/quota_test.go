@@ -23,18 +23,18 @@ func TestQuota(t *testing.T) {
 			// Add pod1 cpu
 			err := quota.AddPodIfNotPresent(pod1)
 			require.NoError(t, err)
-			assert.Equal(t, framework.Resource{MilliCPU: 1000}, *quota.Used)
+			assert.Equal(t, framework.Resource{MilliCPU: 1000, AllowedPodNumber: 1}, *quota.Used)
 
 			// Add pod2 cpu
 			err = quota.AddPodIfNotPresent(pod2)
 			require.NoError(t, err)
-			assert.Equal(t, framework.Resource{MilliCPU: 3000}, *quota.Used)
+			assert.Equal(t, framework.Resource{MilliCPU: 3000, AllowedPodNumber: 2}, *quota.Used)
 
 			t.Run("idempotent", func(t *testing.T) {
 				// Add pod1 cpu again does nothing
 				err := quota.AddPodIfNotPresent(pod1)
 				require.NoError(t, err)
-				assert.Equal(t, framework.Resource{MilliCPU: 3000}, *quota.Used) // No change
+				assert.Equal(t, framework.Resource{MilliCPU: 3000, AllowedPodNumber: 2}, *quota.Used) // No change
 			})
 		})
 
@@ -42,20 +42,20 @@ func TestQuota(t *testing.T) {
 			// Delete pod1 cpu
 			err := quota.DeletePodIfPresent(pod1)
 			require.NoError(t, err)
-			assert.Equal(t, framework.Resource{MilliCPU: 2000}, *quota.Used)
+			assert.Equal(t, framework.Resource{MilliCPU: 2000, AllowedPodNumber: 1}, *quota.Used)
 
 			t.Run("idempotent", func(t *testing.T) {
 				// Remove pod1 again does nothing
 				err := quota.DeletePodIfPresent(pod1)
 				require.NoError(t, err)
-				assert.Equal(t, framework.Resource{MilliCPU: 2000}, *quota.Used) // No change
+				assert.Equal(t, framework.Resource{MilliCPU: 2000, AllowedPodNumber: 1}, *quota.Used) // No change
 			})
 
 			t.Run("delete random pod does nothing", func(t *testing.T) {
 				podNotInQuota := newPodWithReq(corev1.ResourceList{corev1.ResourceCPU: *resource.NewQuantity(1, resource.DecimalSI)})
 				err := quota.DeletePodIfPresent(podNotInQuota)
 				require.NoError(t, err)
-				assert.Equal(t, framework.Resource{MilliCPU: 2000}, *quota.Used) // No change
+				assert.Equal(t, framework.Resource{MilliCPU: 2000, AllowedPodNumber: 1}, *quota.Used) // No change
 			})
 
 			// Delete pod2 cpu
@@ -72,13 +72,20 @@ func TestQuota(t *testing.T) {
 		})
 	})
 
-	t.Run("error on no pod UID", func(t *testing.T) {
+	t.Run("error on pod with no UID", func(t *testing.T) {
 		quota := queue.NewQuota(nil)
 		pod := newPodWithReq(corev1.ResourceList{corev1.ResourceCPU: *resource.NewQuantity(1, resource.DecimalSI)})
 		pod.UID = ""
 
-		err := quota.AddPodIfNotPresent(pod)
-		require.Error(t, err)
+		t.Run("add pod", func(t *testing.T) {
+			err := quota.AddPodIfNotPresent(pod)
+			require.Error(t, err)
+		})
+
+		t.Run("delete pod", func(t *testing.T) {
+			err := quota.DeletePodIfPresent(pod)
+			require.Error(t, err)
+		})
 	})
 }
 
