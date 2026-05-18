@@ -64,6 +64,8 @@ func (p *preemptor) OrderedScoreFuncs(
 }
 
 // PodEligibleToPreemptOthers implements [preemption.Interface].
+// TODO: Account for "target queues" specified on queue.
+// A pod is not eligible to preempt others if its queue has no targets.
 func (p *preemptor) PodEligibleToPreemptOthers(
 	ctx context.Context,
 	pod *corev1.Pod,
@@ -208,6 +210,8 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 }
 
 // SelectVictimsOnNode implements [preemption.Interface].
+// TODO: Account for "target queues" specified on queue.
+// A pod should only be a victim if its queue is a target.
 func (p *preemptor) SelectVictimsOnNode(
 	ctx context.Context,
 	state fwk.CycleState,
