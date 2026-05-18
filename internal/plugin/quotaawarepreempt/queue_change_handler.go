@@ -19,58 +19,20 @@ import (
 
 // queueChangeHandler is used to handle queue changes to keep the plugin in sync.
 type queueChangeHandler struct {
-	queueMgr *queue.Manager
+	queueMgr    *queue.Manager
+	queueClient schedv1client.QueueInterface
 }
 
 func newQueueChangeHandler(
 	ctx context.Context,
-	client schedv1client.SchedulingV1Interface,
+	client schedv1client.QueueInterface,
 	informer schedv1informers.QueueInformer,
 	queueMgr *queue.Manager,
 ) (*queueChangeHandler, error) {
-	logger := klog.FromContext(ctx)
 	handler := queueChangeHandler{
-		queueMgr: queueMgr,
+		queueMgr:    queueMgr,
+		queueClient: client,
 	}
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(5 * time.Second):
-				for q := range queueMgr.QueueIter() {
-					statusPatch := schedv1.Queue{
-						Status: schedv1.QueueStatus{
-							Quota: schedv1.QueueQuotaStatus{
-								Used: resconv.ToResourceList(q.Quota.Used),
-							},
-						},
-					}
-
-					patchBytes, err := json.Marshal(statusPatch)
-					if err != nil {
-						logger.Error(err, "failed to convert status patch to bytes",
-							"statusPatch", statusPatch)
-						continue
-					}
-
-					if _, err := client.Queues().Patch(
-						ctx,
-						q.Name,
-						types.MergePatchType,
-						patchBytes,
-						metav1.PatchOptions{},
-						"status",
-					); err != nil {
-						logger.Error(err, "failed to patch status",
-							"statusPatch", statusPatch)
-						continue
-					}
-				}
-			}
-		}
-	}()
 
 	queueInformer := informer.Informer()
 	if _, err := queueInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -81,7 +43,50 @@ func newQueueChangeHandler(
 		return nil, err
 	}
 
+	go handler.statusUpdateLoop(ctx)
+
 	return &handler, nil
+}
+
+func (handler *queueChangeHandler) statusUpdateLoop(ctx context.Context) {
+	logger := klog.FromContext(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Second):
+			for q := range handler.queueMgr.QueueIter() {
+				statusPatch := schedv1.Queue{
+					Status: schedv1.QueueStatus{
+						Quota: schedv1.QueueQuotaStatus{
+							Used: resconv.ToResourceList(q.Quota.Used),
+						},
+					},
+				}
+
+				patchBytes, err := json.Marshal(statusPatch)
+				if err != nil {
+					logger.Error(err, "failed to convert status patch to bytes",
+						"statusPatch", statusPatch)
+					continue
+				}
+
+				if _, err := handler.queueClient.Patch(
+					ctx,
+					q.Name,
+					types.MergePatchType,
+					patchBytes,
+					metav1.PatchOptions{},
+					"status",
+				); err != nil {
+					logger.Error(err, "failed to patch status",
+						"statusPatch", statusPatch)
+					continue
+				}
+			}
+		}
+	}
 }
 
 func (handler *queueChangeHandler) addQueue(obj any) {
@@ -97,7 +102,6 @@ func (handler *queueChangeHandler) addQueue(obj any) {
 	logger.Info("handling queue added",
 		"queue", klog.KObj(queueObj))
 
-	// TODO: stop clobbering the quota, this breaks things
 	handler.queueMgr.Set(&queue.Queue{
 		Name:  queueObj.Name,
 		Quota: queue.NewQuota(queueObj.Spec.Quota.Max),
@@ -130,23 +134,18 @@ func (handler *queueChangeHandler) updateQueue(oldObj, newObj any) {
 		"oldQueue", klog.KObj(oldQueue),
 		"newQueue", klog.KObj(newQueue))
 
-	if newQueue == nil {
-		handler.queueMgr.Delete(oldQueue.Name)
-		return
-	}
+	if err := handler.queueMgr.Update(newQueue.Name, func(current *queue.Queue) error {
+		if current == nil {
+			return fmt.Errorf("attempted to update queue that does not exist")
+		}
 
-	// TODO: stop clobbering the quota, this breaks things.
-	// It's resetting the used quota being tracked.
-	// We probably want queueMgr.Set to be less dumb, or have
-	// distinct "Set" and "Update" methods or "UpdateMaxQuota" or smth.
-	handler.queueMgr.Set(&queue.Queue{
-		Name:  newQueue.Name,
-		Quota: queue.NewQuota(newQueue.Spec.Quota.Max),
-		// TODO: recompute target queues on update.
-		// If this queue's target selector were changed: update this queue's targets.
-		// If this queue's labels were changed: update other queue's targets.
-		TargetQueues: nil,
-	})
+		current.Quota.SetMax(newQueue.Spec.Quota.Max)
+
+		return nil
+	}); err != nil {
+		logger.Error(err, "failed to update queue",
+			"queue", newQueue.Name)
+	}
 }
 
 func (handler *queueChangeHandler) deleteQueue(obj any) {

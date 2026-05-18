@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	configv1 "github.com/kaschnit/kaschnit-scheduler/apis/config/v1"
+	"github.com/kaschnit/kaschnit-scheduler/apis/scheduling"
 	"github.com/kaschnit/kaschnit-scheduler/internal/boolstr"
 	"github.com/kaschnit/kaschnit-scheduler/internal/pdbutil"
 	"github.com/kaschnit/kaschnit-scheduler/internal/resmath"
@@ -91,7 +92,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 
 	// Check the preemptor label.
 	// The pod is only eligible to preempt if it has this label.
-	if !boolstr.IsTrue(pod.Labels[configv1.LabelKeyPreemptor]) {
+	if !boolstr.IsTrue(pod.Labels[scheduling.LabelKeyPreemptor]) {
 		return false, "Not eligible to preempt due to is-preemptor!=true"
 	}
 
@@ -156,7 +157,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 				// Thus it is not a preemption victim, it's just a terminating pod.
 				continue
 			}
-			if !boolstr.IsTrue(victimInfo.GetPod().Labels[configv1.LabelKeyVictim]) {
+			if !boolstr.IsTrue(victimInfo.GetPod().Labels[scheduling.LabelKeyVictim]) {
 				// Terminating pod is not allowed to be a vicitm.
 				// This it is preemption victim, it's just a terminating pod.
 				continue

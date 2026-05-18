@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	configv1 "github.com/kaschnit/kaschnit-scheduler/apis/config/v1"
+	schedv1 "github.com/kaschnit/kaschnit-scheduler/apis/scheduling/v1"
 	schedclients "github.com/kaschnit/kaschnit-scheduler/internal/generated/clients/scheduling"
 	schedinformers "github.com/kaschnit/kaschnit-scheduler/internal/generated/informers/externalversions"
 	"github.com/kaschnit/kaschnit-scheduler/internal/plugin/quotaawarepreempt/queue"
@@ -31,8 +32,8 @@ const (
 type Plugin struct {
 	sync.RWMutex
 	queueMgr           *queue.Manager
-	podChangeHandler   *podChangeHandler
 	queueChangeHandler *queueChangeHandler
+	podChangeHandler   *podChangeHandler
 	logger             klog.Logger
 	fh                 fwk.Handle
 	args               configv1.QuotaAwarePreemptionArgs
@@ -59,14 +60,6 @@ func NewPlugin(ctx context.Context, rawArgs runtime.Object, fh fwk.Handle) (fwk.
 	logger.Info("Setting up queue manager for plugin")
 	queueMgr := queue.NewManager()
 
-	logger.Info("Setting up pod change handler for plugin")
-	podChangeHandler, err := newPodChangeHandler(
-		fh.SharedInformerFactory().Core().V1().Pods(),
-		queueMgr)
-	if err != nil {
-		return nil, err
-	}
-
 	logger.Info("Setting up queue change handler for plugin")
 	schedClientset, err := schedclients.NewForConfig(fh.KubeConfig())
 	if err != nil {
@@ -76,7 +69,7 @@ func NewPlugin(ctx context.Context, rawArgs runtime.Object, fh fwk.Handle) (fwk.
 	schedInformerFactory := schedinformers.NewSharedInformerFactory(schedClientset, 0)
 	queueChangeHandler, err := newQueueChangeHandler(
 		ctx,
-		schedClientset.SchedulingV1(),
+		schedClientset.SchedulingV1().Queues(),
 		schedInformerFactory.Scheduling().V1().Queues(),
 		queueMgr)
 	if err != nil {
@@ -86,11 +79,19 @@ func NewPlugin(ctx context.Context, rawArgs runtime.Object, fh fwk.Handle) (fwk.
 	schedInformerFactory.Start(ctx.Done())
 	schedInformerFactory.WaitForCacheSync(ctx.Done())
 
+	logger.Info("Setting up pod change handler for plugin")
+	podChangeHandler, err := newPodChangeHandler(
+		fh.SharedInformerFactory().Core().V1().Pods(),
+		queueMgr)
+	if err != nil {
+		return nil, err
+	}
+
 	logger.Info("Initialized plugin")
 	return &Plugin{
 		queueMgr:           queueMgr,
-		podChangeHandler:   podChangeHandler,
 		queueChangeHandler: queueChangeHandler,
+		podChangeHandler:   podChangeHandler,
 		logger:             logger,
 		fh:                 fh,
 		args:               args,
@@ -289,6 +290,9 @@ func (plugin *Plugin) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWit
 	// unschedulable queue.
 	// See: https://github.com/kubernetes/kubernetes/issues/110175
 	// See: https://github.com/kubernetes/kubernetes/issues/87850
+	schedv1QuotaGVK := fmt.Sprintf("queues.%s.%s",
+		schedv1.SchemeGroupVersion.Version,
+		schedv1.SchemeGroupVersion.Group)
 	return []fwk.ClusterEventWithHint{
 		// Changes to a pod may cause previously unschedulable pods to become schedulable.
 		{
@@ -300,8 +304,14 @@ func (plugin *Plugin) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWit
 				return fwk.Queue, nil
 			},
 		},
-		// TODO: Add cluster event for quotas if we make quotas dynamic.
-		// 	If quotas are dynamic, than any changes to quotas may cause
-		// 	previously-unschedulable pods to become schedulable.
+		{
+			Event: fwk.ClusterEvent{
+				Resource:   fwk.EventResource(schedv1QuotaGVK),
+				ActionType: fwk.All,
+			},
+			QueueingHintFn: func(logger klog.Logger, pod *corev1.Pod, oldObj, newObj interface{}) (fwk.QueueingHint, error) {
+				return fwk.Queue, nil
+			},
+		},
 	}, nil
 }

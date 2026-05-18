@@ -24,6 +24,17 @@ type Quota struct {
 
 // NewQuota creates a new [Quota].
 func NewQuota(max corev1.ResourceList) *Quota {
+	quota := &Quota{
+		Used: framework.NewResource(nil),
+		pods: sets.New[string](),
+	}
+
+	quota.SetMax(max)
+
+	return quota
+}
+
+func (q *Quota) SetMax(max corev1.ResourceList) {
 	if max == nil {
 		max = corev1.ResourceList{
 			corev1.ResourceCPU:              *resource.NewMilliQuantity(math.MaxInt64, resource.DecimalSI),
@@ -33,11 +44,7 @@ func NewQuota(max corev1.ResourceList) *Quota {
 		}
 	}
 
-	return &Quota{
-		Max:  framework.NewResource(max),
-		Used: framework.NewResource(nil),
-		pods: sets.New[string](),
-	}
+	q.Max = framework.NewResource(max)
 }
 
 // AddPodIfNotPresent adds the pod to the quota if it's not part of the quota.

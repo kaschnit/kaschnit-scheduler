@@ -6,7 +6,7 @@ import (
 	"iter"
 	"sync"
 
-	configv1 "github.com/kaschnit/kaschnit-scheduler/apis/config/v1"
+	"github.com/kaschnit/kaschnit-scheduler/apis/scheduling"
 
 	corev1 "k8s.io/api/core/v1"
 )
@@ -45,13 +45,24 @@ func (qm *Manager) get(pod *corev1.Pod) *Queue {
 		return nil
 	}
 
-	queue, ok := pod.Labels[configv1.LabelKeyQueue]
+	name, ok := pod.Labels[scheduling.LabelKeyQueue]
 	if !ok {
 		// Ignore pod if it has no queue, it will not be tracked.
 		return nil
 	}
 
-	return qm.queueByName[queue]
+	return qm.getByName(name)
+}
+
+func (qm *Manager) GetByName(name string) *Queue {
+	qm.RLock()
+	defer qm.RUnlock()
+
+	return qm.getByName(name)
+}
+
+func (qm *Manager) getByName(name string) *Queue {
+	return qm.queueByName[name]
 }
 
 // Set creates or updates the quota for the queeu.
@@ -66,6 +77,15 @@ func (qm *Manager) set(queue *Queue) {
 	if queue != nil {
 		qm.queueByName[queue.Name] = queue
 	}
+}
+
+func (qm *Manager) Update(name string, mutate func(current *Queue) error) error {
+	qm.Lock()
+	defer qm.Unlock()
+
+	current := qm.getByName(name)
+
+	return mutate(current)
 }
 
 func (qm *Manager) Delete(name string) {
@@ -104,7 +124,7 @@ func (qm *Manager) addPodIfNotPresentNoLock(pod *corev1.Pod) error {
 		return nil
 	}
 
-	queueName, ok := pod.Labels[configv1.LabelKeyQueue]
+	queueName, ok := pod.Labels[scheduling.LabelKeyQueue]
 	if !ok {
 		// Ignore pod if it has no queue, it will not be tracked.
 		return nil
@@ -131,7 +151,7 @@ func (qm *Manager) deletePodIfPresentNoLock(pod *corev1.Pod) error {
 		return nil
 	}
 
-	queueName, ok := pod.Labels[configv1.LabelKeyQueue]
+	queueName, ok := pod.Labels[scheduling.LabelKeyQueue]
 	if !ok {
 		// Ignore pod if it has no queue, it will not be tracked.
 		return nil

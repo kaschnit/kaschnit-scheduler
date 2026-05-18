@@ -8,7 +8,7 @@ import (
 type QueueQuotaConfig struct {
 	// Max is the max quota for this queue.
 	// +optional
-	Max corev1.ResourceList `json:"max"`
+	Max corev1.ResourceList `json:"max,omitempty"`
 }
 
 type QueueQuotaStatus struct {
