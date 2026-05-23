@@ -21,12 +21,14 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// Synchronizer keeps the queue manager in sync with the cluster.
 type Synchronizer struct {
 	queueMgr    *Manager
 	queueClient schedv1client.QueueInterface
 	resTracker  *clusterres.Tracker
 }
 
+// NewSynchronizer creates a new [Synchronizer].
 func NewSynchronizer(
 	ctx context.Context,
 	queueMgr *Manager,

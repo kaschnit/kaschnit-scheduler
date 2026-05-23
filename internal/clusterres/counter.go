@@ -10,16 +10,23 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
+// Counter counts resources belonging to nodes.
 type Counter struct {
-	nodeIDs sets.Set[types.UID]
-	total   *framework.Resource
-	lock    sync.RWMutex
+	nodeIDs    sets.Set[types.UID]
+	total      *framework.Resource
+	lock       sync.RWMutex
+	getNodeRes func(*corev1.Node) corev1.ResourceList
 }
 
-func NewCounter(nodes ...*corev1.Node) *Counter {
+// NewAllocatableCounter creates a new [Counter] that counts
+// allocatable resources of nodes.
+func NewAllocatableCounter(nodes ...*corev1.Node) *Counter {
 	counter := &Counter{
 		nodeIDs: sets.New[types.UID](),
 		total:   framework.NewResource(nil),
+		getNodeRes: func(node *corev1.Node) corev1.ResourceList {
+			return node.Status.Allocatable
+		},
 	}
 
 	counter.PutAll(nodes)
@@ -27,6 +34,7 @@ func NewCounter(nodes ...*corev1.Node) *Counter {
 	return counter
 }
 
+// GetTotal gets the total count of resources counted.
 func (counter *Counter) GetTotal() *framework.Resource {
 	counter.lock.RLock()
 	defer counter.lock.RUnlock()
@@ -34,6 +42,7 @@ func (counter *Counter) GetTotal() *framework.Resource {
 	return counter.total.Clone()
 }
 
+// Put adds or updates the node in the counter.
 func (counter *Counter) Put(node *corev1.Node) {
 	counter.lock.Lock()
 	defer counter.lock.Unlock()
@@ -42,6 +51,7 @@ func (counter *Counter) Put(node *corev1.Node) {
 	counter.addNoLock(node)
 }
 
+// PutAll adds or updates each node in the counter.
 func (counter *Counter) PutAll(nodes []*corev1.Node) {
 	counter.lock.Lock()
 	defer counter.lock.Unlock()
@@ -52,6 +62,7 @@ func (counter *Counter) PutAll(nodes []*corev1.Node) {
 	}
 }
 
+// Delete removes a node from the counter.
 func (counter *Counter) Delete(node *corev1.Node) {
 	counter.lock.Lock()
 	defer counter.lock.Unlock()
@@ -65,7 +76,7 @@ func (counter *Counter) addNoLock(node *corev1.Node) {
 	}
 
 	counter.nodeIDs.Insert(node.UID)
-	resmath.AddInPlace(counter.total, framework.NewResource(node.Status.Allocatable))
+	resmath.AddInPlace(counter.total, framework.NewResource(counter.getNodeRes(node)))
 }
 
 func (counter *Counter) deleteNoLock(node *corev1.Node) {
@@ -74,5 +85,5 @@ func (counter *Counter) deleteNoLock(node *corev1.Node) {
 	}
 
 	counter.nodeIDs.Delete(node.UID)
-	resmath.SubtractInPlace(counter.total, framework.NewResource(node.Status.Allocatable))
+	resmath.SubtractInPlace(counter.total, framework.NewResource(counter.getNodeRes(node)))
 }

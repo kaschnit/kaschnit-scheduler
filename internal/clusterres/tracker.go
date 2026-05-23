@@ -10,16 +10,19 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
+// Tracker tracks the total available resources in the
+// cluster by watching cluster nodes.
 type Tracker struct {
 	counter *Counter
 }
 
+// NewTracker creates a new [Tracker].
 func NewTracker(
 	ctx context.Context,
 	informerFactory informers.SharedInformerFactory,
 ) (*Tracker, error) {
 	counter := Tracker{
-		counter: NewCounter(),
+		counter: NewAllocatableCounter(),
 	}
 
 	nodeInformer := informerFactory.Core().V1().Nodes().Informer()
@@ -37,6 +40,7 @@ func NewTracker(
 	return &counter, nil
 }
 
+// GetTotal gets the total count of resources tracked in the cluster.
 func (tracker *Tracker) GetTotal() *framework.Resource {
 	return tracker.counter.GetTotal()
 }

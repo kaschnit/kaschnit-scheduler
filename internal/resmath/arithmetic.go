@@ -64,6 +64,18 @@ func SetDefault(
 	}
 }
 
+// TakeEffectiveMaxInPlace mutates max to reflect the effective max.
+// The effective max is the max (as in quota) that accounts for some total
+// available pool of resources, which may be greater or less than the max quota.
+// It reflects the max usable resources.
+// If a total available resource is more than the given max, the effective max for
+// that resource is the given max.
+// If a total available resource is less than the given max, the effective max for
+// that resource is the total available.
+// If a resource is not defined by the given max, but exists in the total available
+// resources, the effective max for that resource is the total available.
+// If a resource does not exist in the total available resources, but is defined by
+// the given max, the effective max for that resource is 0 (because none are usable).
 func TakeEffectiveMaxInPlace(
 	max *framework.Resource,
 	totalAvailable *framework.Resource,
@@ -95,6 +107,9 @@ func TakeEffectiveMaxInPlace(
 	}
 }
 
+// TakeEffectiveMax computes and returns the effective max.
+// The inputs are not mutated.
+// For details on effective max, see [TakeEffectiveMaxInPlace] documentation.
 func TakeEffectiveMax(
 	max *framework.Resource,
 	totalAvailable *framework.Resource,

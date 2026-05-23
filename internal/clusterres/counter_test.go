@@ -23,8 +23,34 @@ func TestCounter(t *testing.T) {
 		"nvidia.com/gpu":      *resource.NewQuantity(2, resource.DecimalSI),
 	})
 
+	t.Run("construct with nodes", func(t *testing.T) {
+		counter1 := clusterres.NewAllocatableCounter(node1)
+		assert.Equal(t, &framework.Resource{
+			MilliCPU: 4000,
+			Memory:   16384,
+		}, counter1.GetTotal())
+
+		counter2 := clusterres.NewAllocatableCounter(node2)
+		assert.Equal(t, &framework.Resource{
+			MilliCPU: 8000,
+			Memory:   32768,
+			ScalarResources: map[corev1.ResourceName]int64{
+				"nvidia.com/gpu": 2,
+			},
+		}, counter2.GetTotal())
+
+		counter3 := clusterres.NewAllocatableCounter(node1, node2)
+		assert.Equal(t, &framework.Resource{
+			MilliCPU: 12000,
+			Memory:   49152,
+			ScalarResources: map[corev1.ResourceName]int64{
+				"nvidia.com/gpu": 2,
+			},
+		}, counter3.GetTotal())
+	})
+
 	t.Run("basic lifecycle", func(t *testing.T) {
-		counter := clusterres.NewCounter()
+		counter := clusterres.NewAllocatableCounter()
 
 		t.Run("starts in empty state", func(t *testing.T) {
 			assert.Equal(t, &framework.Resource{}, counter.GetTotal())
