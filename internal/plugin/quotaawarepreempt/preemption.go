@@ -91,6 +91,20 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 		return false, "Not eligible to preempt due to not a preemptor pod"
 	}
 
+	// Fetch the queue snapshot.
+	queueSnapshot, err := p.stateMgr.ReadQueueSnapshot()
+	if err != nil {
+		logger.Error(err, "Failed to read queueSnapshot from cycleState")
+		return false, "Not eligible to preempt due to failed to read queue snapshot from cycleState."
+	}
+
+	preemptorQ := queueSnapshot.QueueMgr.Get(pod)
+
+	// Pod is not eligible to preempt if its victims selects no victim queues.
+	if labelutil.MatchesNothing(preemptorQ.VictimSelector()) {
+		return false, "Not eligible to preempt due to queue's victim queue selector matching nothing."
+	}
+
 	// If no nominated node for this pod, then it has not yet been considered for preemption.
 	// Thus is should be considered.
 	if len(pod.Status.NominatedNodeName) == 0 {
@@ -124,26 +138,12 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 		return false, "Not eligible to preempt due to failed to read requested resources from cycleState."
 	}
 
-	// Fetch the queue snapshot.
-	queueSnapshot, err := p.stateMgr.ReadQueueSnapshot()
-	if err != nil {
-		logger.Error(err, "Failed to read queueSnapshot from cycleState")
-		return false, "Not eligible to preempt due to failed to read queue snapshot from cycleState."
-	}
-
 	// At this point, we have a pod that has a valid node nomination.
 	// We must ensure that we should preempt on the nominated node.
 	// We should preempt on this node if there are no terminating lower-priority pods
 	// on the node, as such terminations may indicate that this pod already preempted.
 	preemptorPriority := corev1helpers.PodPriority(pod)
-	preemptorQ := queueSnapshot.QueueMgr.Get(pod)
 	if preemptorQ != nil { // Quota-aware preemption path
-		// Check if preemptor queue selects any victim queues.
-		// Preemptor queue is not eligible to preempt if it selects no victim queues.
-		if labelutil.MatchesNothing(preemptorQ.VictimSelector()) {
-			return false, "Not eligible to preempt due to victim queue selector matching nothing."
-		}
-
 		wouldBeOverQuota := preemptorQ.Quota().WouldPutOverMax(
 			resmath.Add(&requestedResources.Request, &requestedResources.NominatedReqInQuota))
 
