@@ -48,7 +48,7 @@ func SubtractInPlace(res *framework.Resource, others ...*framework.Resource) {
 func Subtract(res *framework.Resource, others ...*framework.Resource) *framework.Resource {
 	resCopy := res.Clone()
 
-	SubtractInPlace(res, others...)
+	SubtractInPlace(resCopy, others...)
 
 	return resCopy
 }

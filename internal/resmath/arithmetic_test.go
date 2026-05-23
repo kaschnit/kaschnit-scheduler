@@ -44,7 +44,42 @@ func TestAdd(t *testing.T) {
 }
 
 func TestSubtract(t *testing.T) {
-	// TODO
+	cpuOnlyRes := framework.Resource{MilliCPU: 1}
+	cpuMemRes1 := framework.Resource{MilliCPU: 5, Memory: 3}
+	cpuMemRes2 := framework.Resource{MilliCPU: 4, Memory: 100}
+	gpuRes1 := framework.Resource{ScalarResources: map[corev1.ResourceName]int64{"nvidia.com/gpu": 8}}
+	gpuRes2 := framework.Resource{ScalarResources: map[corev1.ResourceName]int64{"nvidia.com/gpu": 1}}
+
+	t.Run("subtract resources with some overlap", func(t *testing.T) {
+		result := *resmath.Subtract(&cpuMemRes1, &cpuOnlyRes)
+		assert.Equal(t, framework.Resource{
+			MilliCPU: 4,
+			Memory:   3,
+		}, result)
+	})
+
+	t.Run("subtract resources with strict overlap", func(t *testing.T) {
+		result := *resmath.Subtract(&cpuMemRes1, &cpuMemRes2)
+		assert.Equal(t, framework.Resource{
+			MilliCPU: 1,
+			Memory:   -97,
+		}, result)
+
+		result = *resmath.Subtract(&cpuMemRes2, &cpuMemRes1)
+		assert.Equal(t, framework.Resource{
+			MilliCPU: -1,
+			Memory:   97,
+		}, result)
+	})
+
+	t.Run("sum multiple resources with overlap and no overlap", func(t *testing.T) {
+		result := *resmath.Subtract(&cpuMemRes1, &cpuOnlyRes, &gpuRes1, &gpuRes2)
+		assert.Equal(t, framework.Resource{
+			MilliCPU:        4,
+			Memory:          3,
+			ScalarResources: map[corev1.ResourceName]int64{"nvidia.com/gpu": -9},
+		}, result)
+	})
 }
 
 func TestTakeEffectiveMax(t *testing.T) {
