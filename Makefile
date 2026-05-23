@@ -148,7 +148,7 @@ build: generate $(LOCALBIN_DIR) ## Build manager binary.
 	$(GO) build -o $(LOCALBIN_DIR)/scheduler $(CMD)
 
 .PHONY: run
-run: generate ## Run a controller from your host.
+run: generate ## Run the scheduler.
 	$(GO) run $(CMD)
 
 .PHONY: image
@@ -164,7 +164,7 @@ image: generate $(IMG_DIR) ## Build an image and optionally push it.
 			$(CMD)
 
 .PHONY: chart
-chart: generate image
+chart: generate image ## Build a Helm chart.
 	find $(BUILD_MANIFEST_DIR)/ manifests/ \
 		-type f \
 		-name "*.yaml" \
@@ -173,15 +173,15 @@ chart: generate image
 		$(HELMIFY) -crd-dir -image-pull-secrets $(CHARTS_DIR)/kaschnit-scheduler
 
 .PHONY: kind-delete
-kind-delete:
+kind-delete: ## Delete the KIND testing cluster.
 	$(KIND) delete cluster --name "$(KIND_CLUSTER_NAME)"
 
 .PHONY: kind-create
-kind-create: kind-delete
+kind-create: kind-delete ## Create a KIND cluster for testing.
 	$(KIND) create cluster --name "$(KIND_CLUSTER_NAME)"
 
 .PHONY: kind-deploy
-kind-deploy: image chart kind-create
+kind-deploy: image chart kind-create ## Deploy the scheduler to a KIND cluster for testing.
 	$(KIND) load image-archive $(IMG_TAR_FILE) --name "$(KIND_CLUSTER_NAME)"
 	$(HELM) install kaschnit-scheduler $(CHARTS_DIR)/kaschnit-scheduler \
 		--values test/kind/values.yaml \
