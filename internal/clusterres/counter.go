@@ -38,7 +38,7 @@ func (counter *Counter) Put(node *corev1.Node) {
 	counter.lock.Lock()
 	defer counter.lock.Unlock()
 
-	counter.removeNoLock(node)
+	counter.deleteNoLock(node)
 	counter.addNoLock(node)
 }
 
@@ -47,7 +47,7 @@ func (counter *Counter) PutAll(nodes []*corev1.Node) {
 	defer counter.lock.Unlock()
 
 	for _, node := range nodes {
-		counter.removeNoLock(node)
+		counter.deleteNoLock(node)
 		counter.addNoLock(node)
 	}
 }
@@ -56,7 +56,7 @@ func (counter *Counter) Delete(node *corev1.Node) {
 	counter.lock.Lock()
 	defer counter.lock.Unlock()
 
-	counter.removeNoLock(node)
+	counter.deleteNoLock(node)
 }
 
 func (counter *Counter) addNoLock(node *corev1.Node) {
@@ -68,8 +68,8 @@ func (counter *Counter) addNoLock(node *corev1.Node) {
 	resmath.AddInPlace(counter.total, framework.NewResource(node.Status.Allocatable))
 }
 
-func (counter *Counter) removeNoLock(node *corev1.Node) {
-	if node == nil {
+func (counter *Counter) deleteNoLock(node *corev1.Node) {
+	if node == nil || !counter.nodeIDs.Has(node.UID) {
 		return
 	}
 

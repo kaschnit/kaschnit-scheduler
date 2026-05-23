@@ -51,6 +51,9 @@ func (tracker *Tracker) addNode(obj any) {
 			"obj", obj)
 	}
 
+	logger.Info("handling node added",
+		"node", klog.KObj(node))
+
 	tracker.counter.Put(node)
 }
 
@@ -69,6 +72,10 @@ func (tracker *Tracker) updateNode(oldObj, newObj any) {
 		logger.Info("failed to handle node updated, got unexpected new object",
 			"newObj", newObj)
 	}
+
+	logger.Info("handling node updated",
+		"oldNode", klog.KObj(oldNode),
+		"newNode", klog.KObj(newNode))
 
 	needsUpdate := false
 	if len(oldNode.Status.Allocatable) == len(newNode.Status.Allocatable) {
@@ -120,6 +127,9 @@ func (tracker *Tracker) deleteNode(obj any) {
 		logger.Info("failed to handle node deleted, got unexpected object",
 			"obj", obj)
 	}
+
+	logger.Info("handling node deleted",
+		"node", klog.KObj(node))
 
 	tracker.counter.Delete(node)
 }

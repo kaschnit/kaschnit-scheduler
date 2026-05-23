@@ -108,12 +108,6 @@ func (syn *Synchronizer) statusUpdateLoop(ctx context.Context) {
 				statusPatch := schedv1.Queue{
 					Status: schedv1.QueueStatus{
 						Quota: schedv1.QueueQuotaStatus{
-							// TODO: account for scalar resources in EffectiveMax.
-							//	We can use a node informer to watch all resources known
-							//	to nodes and set them in the EffectiveMax list if unset.
-							// TODO: account for cluster capacity in EffectiveMax.
-							//	We can use a node informer to watch all nodes and set
-							//	the "effective max" to the sum of all resources.
 							EffectiveMax: resconv.ToResourceList(effectiveMaxQuota),
 							Used:         resconv.ToResourceList(q.Quota.Used),
 						},
