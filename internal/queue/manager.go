@@ -18,7 +18,7 @@ var (
 	ErrRemovePodFromQuota = errors.New("failed to remove pod from quota")
 )
 
-// Manager manages quotas per queue.
+// Manager manages queues.
 type Manager struct {
 	sync.RWMutex
 	queueByName map[string]*Queue
@@ -65,27 +65,39 @@ func (qm *Manager) getByName(name string) *Queue {
 	return qm.queueByName[name]
 }
 
-// Set creates or updates the quota for the queeu.
-func (qm *Manager) Set(queue *Queue) {
+// Put creates or updates the quota for the queue.
+func (qm *Manager) Put(name string, opts ...QueueOption) {
 	qm.Lock()
 	defer qm.Unlock()
 
-	qm.set(queue)
+	qm.put(New(name, opts...))
 }
 
-func (qm *Manager) set(queue *Queue) {
-	if queue != nil {
-		qm.queueByName[queue.Name] = queue
+func (qm *Manager) put(q *Queue) {
+	if q == nil {
+		return
 	}
+
+	qm.queueByName[q.Name()] = q
 }
 
-func (qm *Manager) Update(name string, mutate func(current *Queue) error) error {
+// Update mutates the queue with the given name.
+// It will create the queue if it does not exist.
+func (qm *Manager) Update(name string, opts ...QueueOption) {
+	if len(opts) == 0 {
+		return
+	}
+
 	qm.Lock()
 	defer qm.Unlock()
 
-	current := qm.getByName(name)
+	q := qm.getByName(name)
+	if q == nil {
+		qm.put(New(name, opts...))
+		return
+	}
 
-	return mutate(current)
+	q.ApplyOpts(opts...)
 }
 
 func (qm *Manager) Delete(name string) {
@@ -93,6 +105,10 @@ func (qm *Manager) Delete(name string) {
 	defer qm.Unlock()
 
 	qm.delete(name)
+}
+
+func (qm *Manager) delete(name string) {
+	delete(qm.queueByName, name)
 }
 
 func (qm *Manager) QueueIter() iter.Seq[*Queue] {
@@ -105,10 +121,6 @@ func (qm *Manager) QueueIter() iter.Seq[*Queue] {
 			}
 		}
 	}
-}
-
-func (qm *Manager) delete(name string) {
-	delete(qm.queueByName, name)
 }
 
 // AddPodIfNotPresent adds the pod to the quota if the pod has a quota.
@@ -135,7 +147,7 @@ func (qm *Manager) addPodIfNotPresentNoLock(pod *corev1.Pod) error {
 		return fmt.Errorf("%w: queue '%s' does not exist", ErrAddPodToQuota, queueName)
 	}
 
-	return q.Quota.AddPodIfNotPresent(pod)
+	return q.Quota().AddPodIfNotPresent(pod)
 }
 
 // DeletePodIfPresent removes the pod to the quota if the pod has a quota.
@@ -162,7 +174,7 @@ func (qm *Manager) deletePodIfPresentNoLock(pod *corev1.Pod) error {
 		return fmt.Errorf("%w: queue '%s' does not exist", ErrRemovePodFromQuota, queueName)
 	}
 
-	return q.Quota.DeletePodIfPresent(pod)
+	return q.Quota().DeletePodIfPresent(pod)
 }
 
 // Clone creates a clone of the [Manager].
@@ -172,8 +184,8 @@ func (qm *Manager) Clone() *Manager {
 	qm.RLock()
 	defer qm.RUnlock()
 
-	for _, q := range qm.queueByName {
-		qmClone.set(q.Clone())
+	for name, q := range qm.queueByName {
+		qmClone.queueByName[name] = q.Clone()
 	}
 
 	return qmClone

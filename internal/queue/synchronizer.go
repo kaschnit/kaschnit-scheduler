@@ -8,13 +8,13 @@ import (
 
 	schedv1 "github.com/kaschnit/kaschnit-scheduler/apis/scheduling/v1"
 	"github.com/kaschnit/kaschnit-scheduler/internal/clusterres"
-	schedv1client "github.com/kaschnit/kaschnit-scheduler/internal/generated/clients/scheduling/typed/scheduling/v1"
 	schedinformers "github.com/kaschnit/kaschnit-scheduler/internal/generated/informers/externalversions"
 	"github.com/kaschnit/kaschnit-scheduler/internal/podutil"
 	"github.com/kaschnit/kaschnit-scheduler/internal/resconv"
 	"github.com/kaschnit/kaschnit-scheduler/internal/resmath"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
@@ -23,9 +23,9 @@ import (
 
 // Synchronizer keeps the queue manager in sync with the cluster.
 type Synchronizer struct {
-	queueMgr    *Manager
-	queueClient schedv1client.QueueInterface
-	resTracker  *clusterres.Tracker
+	queueMgr     *Manager
+	queueUpdater schedv1QueueUpdater
+	resTracker   *clusterres.Tracker
 }
 
 // NewSynchronizer creates a new [Synchronizer].
@@ -33,12 +33,12 @@ func NewSynchronizer(
 	ctx context.Context,
 	queueMgr *Manager,
 	informerFactory informers.SharedInformerFactory,
-	queueClient schedv1client.QueueInterface,
+	queueUpdater schedv1QueueUpdater,
 	schedInformerFactory schedinformers.SharedInformerFactory,
 ) (*Synchronizer, error) {
 	syn := Synchronizer{
-		queueMgr:    queueMgr,
-		queueClient: queueClient,
+		queueMgr:     queueMgr,
+		queueUpdater: queueUpdater,
 	}
 
 	queueInformer := schedInformerFactory.Scheduling().V1().Queues().Informer()
@@ -105,13 +105,13 @@ func (syn *Synchronizer) statusUpdateLoop(ctx context.Context) {
 			clusterTotalRes := syn.resTracker.GetTotal()
 
 			for q := range syn.queueMgr.QueueIter() {
-				effectiveMaxQuota := resmath.TakeEffectiveMax(q.Quota.Max, clusterTotalRes)
+				effectiveMaxQuota := resmath.TakeEffectiveMax(q.Quota().Max, clusterTotalRes)
 
 				statusPatch := schedv1.Queue{
 					Status: schedv1.QueueStatus{
 						Quota: schedv1.QueueQuotaStatus{
 							EffectiveMax: resconv.ToResourceList(effectiveMaxQuota),
-							Used:         resconv.ToResourceList(q.Quota.Used),
+							Used:         resconv.ToResourceList(q.Quota().Used),
 						},
 					},
 				}
@@ -123,9 +123,9 @@ func (syn *Synchronizer) statusUpdateLoop(ctx context.Context) {
 					continue
 				}
 
-				if _, err := syn.queueClient.Patch(
+				if _, err := syn.queueUpdater.Patch(
 					ctx,
-					q.Name,
+					q.Name(),
 					types.MergePatchType,
 					patchBytes,
 					metav1.PatchOptions{},
@@ -153,14 +153,18 @@ func (syn *Synchronizer) addQueue(obj any) {
 	logger.Info("handling queue added",
 		"queue", klog.KObj(queueObj))
 
-	syn.queueMgr.Set(&Queue{
-		Name:  queueObj.Name,
-		Quota: NewQuota(queueObj.Spec.Quota.Max),
-		// TODO: compute target queues on add.
-		// Compute all queues that this queue targets, and recompute the
-		// target queues of all other queues.
-		TargetQueues: nil,
-	})
+	victimQSelector, err := metav1.LabelSelectorAsSelector(queueObj.Spec.Preemption.VictimQueues)
+	if err != nil {
+		logger.Error(err, "invalid spec.preemption.victimQueues selector; default to select nothing",
+			"selector", queueObj.Spec.Preemption.VictimQueues)
+
+		victimQSelector = labels.Nothing()
+	}
+
+	syn.queueMgr.Put(queueObj.Name,
+		WithQuotaMax(queueObj.Spec.Quota.Max),
+		WithLabels(labels.Set(queueObj.Labels)),
+		WithVictimSelector(victimQSelector))
 
 	fmt.Printf("Queue Added: %s\n", queueObj.GetName())
 }
@@ -185,18 +189,18 @@ func (syn *Synchronizer) updateQueue(oldObj, newObj any) {
 		"oldQueue", klog.KObj(oldQueue),
 		"newQueue", klog.KObj(newQueue))
 
-	if err := syn.queueMgr.Update(newQueue.Name, func(current *Queue) error {
-		if current == nil {
-			return fmt.Errorf("attempted to update queue that does not exist")
-		}
+	victimQSelector, err := metav1.LabelSelectorAsSelector(newQueue.Spec.Preemption.VictimQueues)
+	if err != nil {
+		logger.Error(err, "invalid spec.preemption.victimQueues selector; default to select nothing",
+			"selector", newQueue.Spec.Preemption.VictimQueues)
 
-		current.Quota.SetMax(newQueue.Spec.Quota.Max)
-
-		return nil
-	}); err != nil {
-		logger.Error(err, "failed to update queue",
-			"queue", newQueue.Name)
+		victimQSelector = labels.Nothing()
 	}
+
+	syn.queueMgr.Update(newQueue.Name,
+		WithQuotaMax(newQueue.Spec.Quota.Max),
+		WithLabels(labels.Set(newQueue.Labels)),
+		WithVictimSelector(victimQSelector))
 }
 
 func (syn *Synchronizer) deleteQueue(obj any) {
@@ -213,9 +217,6 @@ func (syn *Synchronizer) deleteQueue(obj any) {
 		"queue", klog.KObj(queueObj))
 
 	syn.queueMgr.Delete(queueObj.Name)
-
-	// TODO: update other queues to stop targeting this one since
-	// this queue no longer exists.
 }
 
 func (syn *Synchronizer) addPod(obj any) {
@@ -274,4 +275,15 @@ func (syn *Synchronizer) deletePod(obj any) {
 		logger.Error(err, "Failed to delete Pod from its associated quota",
 			"pod", klog.KObj(pod))
 	}
+}
+
+type schedv1QueueUpdater interface {
+	Patch(
+		ctx context.Context,
+		name string,
+		pt types.PatchType,
+		data []byte,
+		opts metav1.PatchOptions,
+		subresources ...string,
+	) (result *schedv1.Queue, err error)
 }

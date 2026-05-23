@@ -135,7 +135,7 @@ func (plugin *Plugin) PreFilter(
 				// nomPod will be added to the nominatedReqInQuota.
 				// If they aren't subject to the same quota and the usage of nomQuota does not exceed min,
 				// p will be added to the totalNominatedResource.
-				if nomQ.Name == podQ.Name && corev1helpers.PodPriority(nomPodInfo.GetPod()) >= corev1helpers.PodPriority(pod) {
+				if nomQ.Name() == podQ.Name() && corev1helpers.PodPriority(nomPodInfo.GetPod()) >= corev1helpers.PodPriority(pod) {
 					nominatedReqInQuota.Add(nomResourceRequest)
 				}
 			}
@@ -147,10 +147,10 @@ func (plugin *Plugin) PreFilter(
 		NominatedReqInQuota: nominatedReqInQuota,
 	})
 
-	if podQ.Quota.WouldPutOverMax(resmath.Add(&nominatedReqInQuota, podReq)) {
+	if podQ.Quota().WouldPutOverMax(resmath.Add(&nominatedReqInQuota, podReq)) {
 		return nil, fwk.NewStatus(fwk.Unschedulable,
 			fmt.Sprintf("Not eligible for scheduling because queue %s exceeds quota (used=%+v, max=%+v)",
-				podQ.Name, podQ.Quota.Used, podQ.Quota.Max))
+				podQ.Name(), podQ.Quota().Used, podQ.Quota().Max))
 	}
 
 	return nil, fwk.NewStatus(fwk.Success, "")

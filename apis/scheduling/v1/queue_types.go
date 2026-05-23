@@ -22,11 +22,11 @@ type QueueQuotaStatus struct {
 }
 
 type QueuePreemptionConfig struct {
-	// TargetQueues are the queues that this queue can preempt.
+	// VictimQueues are the queues that this queue can preempt.
 	// If this is omitted, the queue cannot preempt.
 	// An explicity empty selector indicates the queue can preempt all queues.
 	// +optional
-	TargetQueues *metav1.LabelSelector `json:"targetQueues,omitempty"`
+	VictimQueues *metav1.LabelSelector `json:"victimQueues,omitempty"`
 }
 
 type QueueSpec struct {
