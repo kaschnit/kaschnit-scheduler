@@ -7,7 +7,7 @@ import (
 	"time"
 
 	schedv1 "github.com/kaschnit/kaschnit-scheduler/apis/scheduling/v1"
-	"github.com/kaschnit/kaschnit-scheduler/internal/cluster"
+	"github.com/kaschnit/kaschnit-scheduler/internal/clusterres"
 	schedv1client "github.com/kaschnit/kaschnit-scheduler/internal/generated/clients/scheduling/typed/scheduling/v1"
 	schedinformers "github.com/kaschnit/kaschnit-scheduler/internal/generated/informers/externalversions"
 	"github.com/kaschnit/kaschnit-scheduler/internal/podutil"
@@ -22,9 +22,9 @@ import (
 )
 
 type Synchronizer struct {
-	queueMgr        *Manager
-	queueClient     schedv1client.QueueInterface
-	resourceCounter *cluster.ResourceTracker
+	queueMgr    *Manager
+	queueClient schedv1client.QueueInterface
+	resTracker  *clusterres.Tracker
 }
 
 func NewSynchronizer(
@@ -80,12 +80,12 @@ func NewSynchronizer(
 	informerFactory.Start(ctx.Done())
 	informerFactory.WaitForCacheSync(ctx.Done())
 
-	resourceCounter, err := cluster.NewResourceTracker(ctx, informerFactory)
+	resTracker, err := clusterres.NewTracker(ctx, informerFactory)
 	if err != nil {
 		return nil, err
 	}
 
-	syn.resourceCounter = resourceCounter
+	syn.resTracker = resTracker
 
 	go syn.statusUpdateLoop(ctx)
 
@@ -100,7 +100,7 @@ func (syn *Synchronizer) statusUpdateLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-time.After(5 * time.Second):
-			clusterTotalRes := syn.resourceCounter.GetTotal()
+			clusterTotalRes := syn.resTracker.GetTotal()
 
 			for q := range syn.queueMgr.QueueIter() {
 				effectiveMaxQuota := resmath.TakeEffectiveMax(q.Quota.Max, clusterTotalRes)

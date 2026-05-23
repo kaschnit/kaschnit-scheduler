@@ -1,4 +1,4 @@
-package cluster
+package clusterres
 
 import (
 	"sync"
@@ -10,14 +10,14 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
-type ResourceCounter struct {
+type Counter struct {
 	nodeIDs sets.Set[types.UID]
 	total   *framework.Resource
-	lock    sync.Mutex
+	lock    sync.RWMutex
 }
 
-func NewResourceCounter(nodes ...*corev1.Node) *ResourceCounter {
-	counter := &ResourceCounter{
+func NewCounter(nodes ...*corev1.Node) *Counter {
+	counter := &Counter{
 		nodeIDs: sets.New[types.UID](),
 		total:   framework.NewResource(nil),
 	}
@@ -27,14 +27,14 @@ func NewResourceCounter(nodes ...*corev1.Node) *ResourceCounter {
 	return counter
 }
 
-func (counter *ResourceCounter) TotalResources() *framework.Resource {
-	counter.lock.Lock()
-	defer counter.lock.Unlock()
+func (counter *Counter) GetTotal() *framework.Resource {
+	counter.lock.RLock()
+	defer counter.lock.RUnlock()
 
 	return counter.total.Clone()
 }
 
-func (counter *ResourceCounter) Put(node *corev1.Node) {
+func (counter *Counter) Put(node *corev1.Node) {
 	counter.lock.Lock()
 	defer counter.lock.Unlock()
 
@@ -42,7 +42,7 @@ func (counter *ResourceCounter) Put(node *corev1.Node) {
 	counter.addNoLock(node)
 }
 
-func (counter *ResourceCounter) PutAll(nodes []*corev1.Node) {
+func (counter *Counter) PutAll(nodes []*corev1.Node) {
 	counter.lock.Lock()
 	defer counter.lock.Unlock()
 
@@ -52,14 +52,14 @@ func (counter *ResourceCounter) PutAll(nodes []*corev1.Node) {
 	}
 }
 
-func (counter *ResourceCounter) Delete(node *corev1.Node) {
+func (counter *Counter) Delete(node *corev1.Node) {
 	counter.lock.Lock()
 	defer counter.lock.Unlock()
 
 	counter.removeNoLock(node)
 }
 
-func (counter *ResourceCounter) addNoLock(node *corev1.Node) {
+func (counter *Counter) addNoLock(node *corev1.Node) {
 	if node == nil || counter.nodeIDs.Has(node.UID) {
 		return
 	}
@@ -68,7 +68,7 @@ func (counter *ResourceCounter) addNoLock(node *corev1.Node) {
 	resmath.AddInPlace(counter.total, framework.NewResource(node.Status.Allocatable))
 }
 
-func (counter *ResourceCounter) removeNoLock(node *corev1.Node) {
+func (counter *Counter) removeNoLock(node *corev1.Node) {
 	if node == nil {
 		return
 	}

@@ -1,4 +1,4 @@
-package cluster
+package clusterres
 
 import (
 	"context"
@@ -10,16 +10,16 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
-type ResourceTracker struct {
-	counter *ResourceCounter
+type Tracker struct {
+	counter *Counter
 }
 
-func NewResourceTracker(
+func NewTracker(
 	ctx context.Context,
 	informerFactory informers.SharedInformerFactory,
-) (*ResourceTracker, error) {
-	counter := ResourceTracker{
-		counter: NewResourceCounter(),
+) (*Tracker, error) {
+	counter := Tracker{
+		counter: NewCounter(),
 	}
 
 	nodeInformer := informerFactory.Core().V1().Nodes().Informer()
@@ -37,11 +37,11 @@ func NewResourceTracker(
 	return &counter, nil
 }
 
-func (tracker *ResourceTracker) GetTotal() *framework.Resource {
-	return tracker.counter.TotalResources()
+func (tracker *Tracker) GetTotal() *framework.Resource {
+	return tracker.counter.GetTotal()
 }
 
-func (tracker *ResourceTracker) addNode(obj any) {
+func (tracker *Tracker) addNode(obj any) {
 	ctx := context.Background()
 	logger := klog.FromContext(ctx)
 
@@ -54,7 +54,7 @@ func (tracker *ResourceTracker) addNode(obj any) {
 	tracker.counter.Put(node)
 }
 
-func (tracker *ResourceTracker) updateNode(oldObj, newObj any) {
+func (tracker *Tracker) updateNode(oldObj, newObj any) {
 	ctx := context.Background()
 	logger := klog.FromContext(ctx)
 
@@ -111,7 +111,7 @@ func (tracker *ResourceTracker) updateNode(oldObj, newObj any) {
 	}
 }
 
-func (tracker *ResourceTracker) deleteNode(obj any) {
+func (tracker *Tracker) deleteNode(obj any) {
 	ctx := context.Background()
 	logger := klog.FromContext(ctx)
 
