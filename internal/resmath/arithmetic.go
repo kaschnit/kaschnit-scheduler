@@ -63,3 +63,45 @@ func SetDefault(
 		res[name] = *quantity
 	}
 }
+
+func TakeEffectiveMaxInPlace(
+	max *framework.Resource,
+	totalAvailable *framework.Resource,
+) {
+	max.Memory = min(max.Memory, totalAvailable.Memory)
+	max.MilliCPU = min(max.MilliCPU, totalAvailable.MilliCPU)
+	max.EphemeralStorage = min(max.EphemeralStorage, totalAvailable.EphemeralStorage)
+	max.AllowedPodNumber = min(max.AllowedPodNumber, totalAvailable.AllowedPodNumber)
+	for name, totalValue := range totalAvailable.ScalarResources {
+		if maxValue, ok := max.ScalarResources[name]; ok {
+			// If max defines this resource, its limit is the smaller of the defined max
+			// and the total available.
+			max.ScalarResources[name] = min(maxValue, totalValue)
+		} else {
+			// If max doesn't define this resource, its limit is the total available.
+			max.ScalarResources[name] = totalValue
+		}
+	}
+	for name := range max.ScalarResources {
+		if _, ok := totalAvailable.ScalarResources[name]; ok {
+			// If max defines this resource, its limit is the smaller of the defined max
+			// and the total available.
+			// However, we already calculated this in the previous loop.
+		} else {
+			// If total available is not defined, it means there are none available.
+			// Therefore effective max is 0.
+			max.ScalarResources[name] = 0
+		}
+	}
+}
+
+func TakeEffectiveMax(
+	max *framework.Resource,
+	totalAvailable *framework.Resource,
+) *framework.Resource {
+	maxCopy := max.Clone()
+
+	TakeEffectiveMaxInPlace(maxCopy, totalAvailable)
+
+	return maxCopy
+}

@@ -1,6 +1,7 @@
 package resmath_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/kaschnit/kaschnit-scheduler/internal/resmath"
@@ -44,4 +45,81 @@ func TestAdd(t *testing.T) {
 
 func TestSubtract(t *testing.T) {
 	// TODO
+}
+
+func TestTakeEffectiveMax(t *testing.T) {
+	testCases := []struct {
+		name           string
+		max            *framework.Resource
+		totalAvailable *framework.Resource
+		expected       *framework.Resource
+	}{
+		{
+			name: "kitchen sink",
+			max: &framework.Resource{
+				MilliCPU:         123,
+				EphemeralStorage: 100,
+				Memory:           75,
+				AllowedPodNumber: math.MaxInt64,
+				ScalarResources: map[corev1.ResourceName]int64{
+					"nvidia.com/gpu":                 5,
+					"amd.com/gpu":                    22,
+					"kaschnit.github.io/special-cpu": 7,
+				},
+			},
+			totalAvailable: &framework.Resource{
+				MilliCPU:         200, // Greater than max
+				EphemeralStorage: 50,  // Less than max
+				// No Memory specified here (specified in max)
+				AllowedPodNumber: 12, // Not specified in max
+				ScalarResources: map[corev1.ResourceName]int64{
+					"nvidia.com/gpu": 30, // Greater than max
+					// No amd.com/gpu specified here (specified in max)
+					"kaschnit.github.io/special-cpu": 2,  // Less than max
+					"kaschnit.github.io/special-gpu": 12, // Not specified in max
+				},
+			},
+			expected: &framework.Resource{
+				MilliCPU:         123, // max; because max < totalAvailable
+				EphemeralStorage: 50,  // totalAvailable; because totalAvailable < max
+				Memory:           0,   // 0; because unspecified in totalAvailable means 0
+				AllowedPodNumber: 12,  // totalAvailable; because unspecified in max
+				ScalarResources: map[corev1.ResourceName]int64{
+					"nvidia.com/gpu":                 5,  // max; because max <totalAvailable
+					"amd.com/gpu":                    0,  // 0; because unspecified in totalAvailable means 0
+					"kaschnit.github.io/special-cpu": 2,  // totalAvailable; because totalAvailable < max
+					"kaschnit.github.io/special-gpu": 12, // totalAvailable; because unspecified in max
+				},
+			},
+		},
+		{
+			name: "none available",
+			max: &framework.Resource{
+				MilliCPU:         123,
+				EphemeralStorage: 100,
+				Memory:           75,
+				AllowedPodNumber: math.MaxInt64,
+				ScalarResources: map[corev1.ResourceName]int64{
+					"nvidia.com/gpu":                 5,
+					"amd.com/gpu":                    22,
+					"kaschnit.github.io/special-cpu": 7,
+				},
+			},
+			totalAvailable: &framework.Resource{},
+			expected: &framework.Resource{
+				ScalarResources: map[corev1.ResourceName]int64{
+					"nvidia.com/gpu":                 0,
+					"amd.com/gpu":                    0,
+					"kaschnit.github.io/special-cpu": 0,
+				},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			effectiveMax := resmath.TakeEffectiveMax(testCase.max, testCase.totalAvailable)
+			assert.Equal(t, testCase.expected, effectiveMax)
+		})
+	}
 }
