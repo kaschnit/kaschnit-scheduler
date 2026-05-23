@@ -1,6 +1,6 @@
 module github.com/kaschnit/kaschnit-scheduler
 
-go 1.26.2
+go 1.26.3
 
 tool (
 	github.com/arttor/helmify/cmd/helmify
