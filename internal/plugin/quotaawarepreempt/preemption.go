@@ -163,8 +163,8 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 		// Check for terminating pods (marked for deletion) that will clear up space for preemptor.
 		// This check prevents additional preemptions unnecessarily.
 		for _, victimInfo := range nodeInfo.GetPods() {
-			if victimInfo.GetPod().DeletionTimestamp == nil {
-				// Potential victim is not being deleted, move on to the next.
+			if !podTerminatingByPreemption(victimInfo.GetPod()) {
+				// Potential victim is not being deleted by preemption, move on to the next.
 				continue
 			}
 			if corev1helpers.PodPriority(victimInfo.GetPod()) >= preemptorPriority {
@@ -189,7 +189,6 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 				// This may free up room to schedule the preemptor, so no need to preempt.
 				return false, "Not eligible to preempt due to a terminating pod on the nominated node."
 			}
-
 			if preemptorQ.Name() != victimQ.Name() && !wouldBeOverQuota {
 				// There is a terminating victim in a different queue (not sharing quota with preemptor).
 				// The preemptor is also not going to be over its quota, and thus is schedulable in terms of quota.
@@ -198,18 +197,17 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 			}
 		}
 	} else { // Vanilla preemption path
-		for _, victimPodInfo := range nodeInfo.GetPods() {
-			if victimPodInfo.GetPod().DeletionTimestamp == nil {
-				// Victim is not being deleted, move on to the next.
+		for _, victimInfo := range nodeInfo.GetPods() {
+			if !podTerminatingByPreemption(victimInfo.GetPod()) {
+				// Victim is not being deleted by preemption, move on to the next.
 				continue
 			}
-
-			if victimQuota := queueSnapshot.QueueMgr.Get(victimPodInfo.GetPod()); victimQuota != nil {
+			if victimQuota := queueSnapshot.QueueMgr.Get(victimInfo.GetPod()); victimQuota != nil {
 				// Victim has a quota, do not evaluate for normal preemption path.
 				continue
 			}
 
-			if corev1helpers.PodPriority(victimPodInfo.GetPod()) < preemptorPriority {
+			if corev1helpers.PodPriority(victimInfo.GetPod()) < preemptorPriority {
 				// There is a terminating victim of lower priority.
 				// This may free up room to schedule the preemptor, so no need to preempt.
 				return false, "Not eligible to preempt due to a terminating pod on the nominated node."
@@ -454,4 +452,19 @@ func (p *preemptor) SelectVictimsOnNode(
 		"numPDBViolationVictims", numPDBViolationVictims)
 
 	return victims, numPDBViolationVictims, fwk.NewStatus(fwk.Success)
+}
+
+// podTerminatingByPreemption returns true if the pod is in the termination state caused by scheduler preemption.
+func podTerminatingByPreemption(p *corev1.Pod) bool {
+	if p.DeletionTimestamp == nil {
+		return false
+	}
+
+	for _, condition := range p.Status.Conditions {
+		if condition.Type == corev1.DisruptionTarget {
+			return condition.Status == corev1.ConditionTrue && condition.Reason == corev1.PodReasonPreemptionByScheduler
+		}
+	}
+
+	return false
 }
