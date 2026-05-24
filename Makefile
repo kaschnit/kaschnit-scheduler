@@ -16,7 +16,7 @@ CONTROLLER_GEN ?= $(GO) tool sigs.k8s.io/controller-tools/cmd/controller-gen
 CLIENT_GEN ?= $(GO) tool k8s.io/code-generator/cmd/client-gen
 LISTER_GEN ?= $(GO) tool k8s.io/code-generator/cmd/lister-gen
 INFORMER_GEN ?= $(GO) tool k8s.io/code-generator/cmd/informer-gen
-HELM ?= $(GO) tool helm.sh/helm/v3/cmd/helm
+HELM ?= $(GO) tool helm.sh/helm/v4/cmd/helm
 HELMIFY ?= $(GO) tool github.com/arttor/helmify/cmd/helmify
 
 MODULE := $(shell $(GO) list -m)
