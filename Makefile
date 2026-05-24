@@ -35,9 +35,8 @@ IMG_DIR := $(BUILD_DIR)/image
 IMG_TAR_FILE := $(IMG_DIR)/scheduler.tar
 
 # Helm
-CHART_DIR := charts/kaschnit-scheduler
-CHART_SRC_DIR := $(CURDIR)/$(CHART_DIR)
-CHART_BUILD_DIR := $(BUILD_DIR)/$(CHART_DIR)
+CHART_SRC_DIR := $(CURDIR)/charts/kaschnit-scheduler
+CHART_BUILD_DIR := $(BUILD_DIR)/charts/kaschnit-scheduler
 
 # Generated manifests
 BUILD_MANIFEST_DIR := $(BUILD_DIR)/manifests
