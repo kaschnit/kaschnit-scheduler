@@ -18,6 +18,7 @@ import (
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	"k8s.io/kubernetes/pkg/scheduler/framework/preemption"
 	schedruntime "k8s.io/kubernetes/pkg/scheduler/framework/runtime"
 	"k8s.io/kubernetes/pkg/scheduler/metrics"
@@ -35,6 +36,7 @@ type Plugin struct {
 	queueSynchronizer *queue.Synchronizer
 	logger            klog.Logger
 	fh                fwk.Handle
+	fts               feature.Features
 	args              configv1.QuotaAwarePreemptionArgs
 }
 
@@ -48,7 +50,7 @@ var (
 )
 
 // NewPlugin initializes a new [Plugin] and returns it.
-func NewPlugin(ctx context.Context, rawArgs runtime.Object, fh fwk.Handle) (fwk.Plugin, error) {
+func NewPlugin(ctx context.Context, rawArgs runtime.Object, fh fwk.Handle, fts feature.Features) (fwk.Plugin, error) {
 	logger := klog.FromContext(ctx).WithValues("plugin", PluginName)
 
 	var args configv1.QuotaAwarePreemptionArgs
@@ -182,7 +184,7 @@ func (plugin *Plugin) PostFilter(
 			fh:       plugin.fh,
 			stateMgr: NewStateManager(state),
 		},
-		plugin.args.Preemption.EnableAsyncPreemption,
+		preemption.NewExecutor(plugin.fh, plugin.fts),
 	)
 
 	result, status := evaluator.Preempt(ctx, state, pod, m)
