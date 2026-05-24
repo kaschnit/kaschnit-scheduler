@@ -133,10 +133,28 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 		return false, "Not eligible to preempt due to failed to read requested resources from cycleState."
 	}
 
-	// At this point, we have a pod that has a valid node nomination.
-	// We must ensure that we should preempt on the nominated node.
-	// We should preempt on this node if there are no terminating lower-priority pods
-	// on the node, as such terminations may indicate that this pod already preempted.
+	// At this point, we have a pod that has a still-valid node nomination.
+	// This means it has already selected victims on the nominated node.
+	// We must check if we should again perform victim selection on the nominated node.
+	//
+	// We should select victims again if there are no terminating, lower-priority pods
+	// on the nominated node; such terminations may indicate that the preemption resulting
+	// from the previous victim selection is still in-progress.
+	// We don't want to perform victim selection if we don't have to because it's expensive.
+	//
+	// Note that we may incorrectly conclude that we should select victims again due
+	// to the node snapshot not containing preemption victim. This may happen if the
+	// victims terminated.
+	// This should be fine; it will be handled during victim selection. The reprieval
+	// process will ensure that no victims are selected if there's now space on the node.
+	// This is not ideal because, again, victim selection is expensive; but it should not
+	// cause any correctness problems.
+	// 	TODO: How do we avoid this?
+	//  - It's confusing; it appears concerning when looking at scheduler logs.
+	//	- It also wastes time on victim selection that will select no victims.
+	//	- Idea: In SelectVictims, RunFilterPluginsWithNominatedPods as the very first step.
+	// 			If it succeeds, then don't perform victim selection; return no victims
+	// 			with a success status. This says "we fit on this node with no victims".
 	preemptorPriority := corev1helpers.PodPriority(pod)
 	if preemptorQ != nil { // Quota-aware preemption path
 		wouldBeOverQuota := preemptorQ.Quota().WouldPutOverMax(
@@ -156,7 +174,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 			}
 			if !boolstr.IsTrue(victimInfo.GetPod().Labels[scheduling.LabelKeyVictim]) {
 				// Terminating pod is not allowed to be a vicitm.
-				// This it is preemption victim, it's just a terminating pod.
+				// So it is not a preemption victim, it's just a terminating pod.
 				continue
 			}
 
@@ -166,7 +184,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 				continue
 			}
 
-			if preemptorQ.Name() == victimQ.Name() && corev1helpers.PodPriority(victimInfo.GetPod()) < preemptorPriority {
+			if preemptorQ.Name() == victimQ.Name() {
 				// There is a terminating victim in the queue (sharing quota with preemptor) and of lower priority.
 				// This may free up room to schedule the preemptor, so no need to preempt.
 				return false, "Not eligible to preempt due to a terminating pod on the nominated node."
@@ -178,7 +196,6 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 				// So, waiting for this victim to finish terminating will allow the preemptor to schedule.
 				return false, "Not eligible to preempt due to a terminating pod on the nominated node."
 			}
-
 		}
 	} else { // Vanilla preemption path
 		for _, victimPodInfo := range nodeInfo.GetPods() {
@@ -321,7 +338,7 @@ func (p *preemptor) SelectVictimsOnNode(
 
 	if status := p.fh.RunFilterPluginsWithNominatedPods(ctx, state, pod, nodeInfo); !status.IsSuccess() {
 		// If the new pod does not fit after removing all the lower priority pods,
-		// this node is not suitable for preemption.
+		// this node is not suitable for preemption. We can skip the expensive reprieval logic.
 		logger.Info("Preemptor does not fit on node after removing potential victims")
 		return nil, 0, status
 	}
