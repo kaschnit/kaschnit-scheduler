@@ -10,6 +10,9 @@ data:
     kind: KubeSchedulerConfiguration
     leaderElection:
       leaderElect: true
+      resourceName: kaschnit-scheduler-scheduler
+      resourceNamespace: {{ .Release.Namespace }}
+      resourceLock: leases
     profiles:
     {{- range $profile := .Values.scheduler.profiles }}
     - schedulerName: {{ $profile.name | quote }}

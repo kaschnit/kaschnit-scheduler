@@ -4,23 +4,36 @@ kind: Deployment
 metadata:
   name: {{ include "kaschnit-scheduler.fullname" . }}-scheduler
   labels:
-    component: scheduler
+    {{- include "kaschnit-scheduler.labels" . | nindent 6 }}
 spec:
   selector:
     matchLabels:
-      component: scheduler
+      {{- include "kaschnit-scheduler.selectorLabels" . | nindent 6 }}
   replicas: {{ .Values.scheduler.replicas }}
   template:
     metadata:
       labels:
-        component: scheduler
         {{- include "kaschnit-scheduler.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "kaschnit-scheduler.serviceAccountName" . }}
       priorityClassName: {{ .Values.scheduler.priorityClassName }}
       nodeSelector: {{- toYaml .Values.scheduler.nodeSelector | nindent 8 }}
       tolerations: {{- toYaml .Values.scheduler.tolerations | nindent 8 }}
-      topologySpreadConstraints: {{- toYaml .Values.scheduler.topologySpreadConstraints | nindent 8 }}
+      {{- if $topologySpreadConstraints := .Values.scheduler.topologySpreadConstraints }}
+      topologySpreadConstraints:
+      {{- range $constraint := $topologySpreadConstraints }}
+      - maxSkew: {{ $constraint.maxSkew }}
+        topologyKey: {{ $constraint.topologyKey }}
+        whenUnsatisfiable: {{ $constraint.whenUnsatisfiable }}
+        labelSelector:
+          {{- if $constraint.labelSelector }}
+          {{- toYaml $constraint.labelSelector | nindent 10 }}
+          {{- else }}
+          matchLabels:
+            {{- include "kaschnit-scheduler.selectorLabels" $ | nindent 12 }}
+          {{- end }}
+      {{- end }}
+      {{- end }}
       securityContext: {{- toYaml .Values.scheduler.podSecurityContext | nindent 8 }}
       containers:
       - name: scheduler
@@ -30,6 +43,18 @@ spec:
         - --secure-port={{ .Values.scheduler.port }}
         imagePullPolicy: {{ .Values.scheduler.image.pullPolicy }}
         {{- if .Values.scheduler.probes.liveness.enabled }}
+        startupProbe:
+          httpGet:
+            path: /readyz
+            port: {{ .Values.scheduler.port }}
+            scheme: HTTPS
+          initialDelaySeconds: {{ .Values.scheduler.probes.startup.initialDelaySeconds }}
+          periodSeconds: {{ .Values.scheduler.probes.startup.periodSeconds }}
+          timeoutSeconds: {{ .Values.scheduler.probes.startup.timeoutSeconds }}
+          successThreshold: {{ .Values.scheduler.probes.startup.successThreshold }}
+          failureThreshold: {{ .Values.scheduler.probes.startup.failureThreshold }}
+        {{- end }}
+        {{- if .Values.scheduler.probes.liveness.enabled }}
         livenessProbe:
           httpGet:
             path: /livez
@@ -38,8 +63,8 @@ spec:
           initialDelaySeconds: {{ .Values.scheduler.probes.liveness.initialDelaySeconds }}
           periodSeconds: {{ .Values.scheduler.probes.liveness.periodSeconds }}
           timeoutSeconds: {{ .Values.scheduler.probes.liveness.timeoutSeconds }}
-          failureThreshold: {{ .Values.scheduler.probes.liveness.failureThreshold }}
           successThreshold: {{ .Values.scheduler.probes.liveness.successThreshold }}
+          failureThreshold: {{ .Values.scheduler.probes.liveness.failureThreshold }}
         {{- end }}
         {{- if .Values.scheduler.probes.readiness.enabled }}
         readinessProbe:
@@ -50,8 +75,8 @@ spec:
           initialDelaySeconds: {{ .Values.scheduler.probes.readiness.initialDelaySeconds }}
           periodSeconds: {{ .Values.scheduler.probes.readiness.periodSeconds }}
           timeoutSeconds: {{ .Values.scheduler.probes.readiness.timeoutSeconds }}
-          failureThreshold: {{ .Values.scheduler.probes.readiness.failureThreshold }}
           successThreshold: {{ .Values.scheduler.probes.readiness.successThreshold }}
+          failureThreshold: {{ .Values.scheduler.probes.readiness.failureThreshold }}
         {{- end }}
         resources: {{- toYaml .Values.scheduler.resources | nindent 10 }}
         securityContext: {{- toYaml .Values.scheduler.containerSecurityContext | nindent 10 }}

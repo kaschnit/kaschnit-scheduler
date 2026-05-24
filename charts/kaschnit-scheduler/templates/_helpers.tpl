@@ -48,6 +48,7 @@ Selector labels
 {{- define "kaschnit-scheduler.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "kaschnit-scheduler.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: scheduler
 {{- end }}
 
 {{/*

@@ -162,7 +162,6 @@ image: generate $(IMG_DIR) ## Build an image and optionally push it.
 chart: generate image $(CHART_BUILD_DIR) ## Build a Helm chart.
 	cp -r $(CHART_SRC_DIR)/* $(CHART_BUILD_DIR)
 	$(CONTROLLER_GEN) paths=./apis/... crd:crdVersions=v1 output:crd:artifacts:config=$(CHART_BUILD_DIR)/templates
-	$(CONTROLLER_GEN) paths=./cmd/... rbac:roleName=kaschnit-scheduler-scheduler output:rbac:artifacts:config=$(CHART_BUILD_DIR)/templates
 
 .PHONY: kind-delete
 kind-delete: ## Delete the KIND testing cluster.
