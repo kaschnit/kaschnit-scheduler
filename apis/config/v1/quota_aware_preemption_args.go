@@ -5,9 +5,6 @@ import (
 )
 
 type PreemptionConfig struct {
-	// EnableAsyncPreemption is whether to enable async preemption.
-	// Defaults to false.
-	EnableAsyncPreemption bool `json:"enableAsyncPreemption"`
 	// PercentageOfNodesToScore is the percentage of nodes to score.
 	// This can be used to reduce the ndoe search space for the best node to preempt.
 	// If not provided, 100% of nodes will be used.
