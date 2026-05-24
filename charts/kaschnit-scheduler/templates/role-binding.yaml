@@ -1,0 +1,17 @@
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ include "kaschnit-scheduler.fullname" . }}-scheduler
+  labels:
+    {{- include "kaschnit-scheduler.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  # Name is hard-coded, not templated, because controller-gen generates the role.
+  # Templated output is not supported by controller-gen.
+  name: kaschnit-scheduler-scheduler
+subjects:
+- kind: ServiceAccount
+  name: '{{ include "kaschnit-scheduler.serviceAccountName" . }}'
+  namespace: '{{ .Release.Namespace }}'

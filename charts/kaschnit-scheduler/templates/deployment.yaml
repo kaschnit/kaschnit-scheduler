@@ -1,0 +1,67 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kaschnit-scheduler.fullname" . }}-scheduler
+  labels:
+    component: scheduler
+spec:
+  selector:
+    matchLabels:
+      component: scheduler
+  replicas: {{ .Values.scheduler.replicas }}
+  template:
+    metadata:
+      labels:
+        component: scheduler
+        {{- include "kaschnit-scheduler.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "kaschnit-scheduler.serviceAccountName" . }}
+      priorityClassName: {{ .Values.scheduler.priorityClassName }}
+      nodeSelector: {{- toYaml .Values.scheduler.nodeSelector | nindent 8 }}
+      tolerations: {{- toYaml .Values.scheduler.tolerations | nindent 8 }}
+      topologySpreadConstraints: {{- toYaml .Values.scheduler.topologySpreadConstraints | nindent 8 }}
+      securityContext: {{- toYaml .Values.scheduler.podSecurityContext | nindent 8 }}
+      containers:
+      - name: scheduler
+        image: {{ .Values.scheduler.image.repository }}:{{ .Values.scheduler.image.tag }}
+        args:
+        - --config={{ .Values.scheduler.configDir }}/scheduler-config.yaml
+        - --secure-port={{ .Values.scheduler.port }}
+        imagePullPolicy: {{ .Values.scheduler.image.pullPolicy }}
+        {{- if .Values.scheduler.probes.liveness.enabled }}
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: {{ .Values.scheduler.port }}
+            scheme: HTTPS
+          initialDelaySeconds: {{ .Values.scheduler.probes.liveness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.scheduler.probes.liveness.periodSeconds }}
+          timeoutSeconds: {{ .Values.scheduler.probes.liveness.timeoutSeconds }}
+          failureThreshold: {{ .Values.scheduler.probes.liveness.failureThreshold }}
+          successThreshold: {{ .Values.scheduler.probes.liveness.successThreshold }}
+        {{- end }}
+        {{- if .Values.scheduler.probes.readiness.enabled }}
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: {{ .Values.scheduler.port }}
+            scheme: HTTPS
+          initialDelaySeconds: {{ .Values.scheduler.probes.readiness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.scheduler.probes.readiness.periodSeconds }}
+          timeoutSeconds: {{ .Values.scheduler.probes.readiness.timeoutSeconds }}
+          failureThreshold: {{ .Values.scheduler.probes.readiness.failureThreshold }}
+          successThreshold: {{ .Values.scheduler.probes.readiness.successThreshold }}
+        {{- end }}
+        resources: {{- toYaml .Values.scheduler.resources | nindent 10 }}
+        securityContext: {{- toYaml .Values.scheduler.containerSecurityContext | nindent 10 }}
+        volumeMounts:
+        - name: scheduler-config
+          mountPath: {{ .Values.scheduler.configDir }}
+          readOnly: true
+      hostNetwork: {{ .Values.scheduler.hostNetwork }}
+      hostPID: false
+      volumes:
+      - name: scheduler-config
+        configMap:
+          name: {{ include "kaschnit-scheduler.fullname" . }}-config

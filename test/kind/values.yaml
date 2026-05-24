@@ -1,27 +1,9 @@
+---
 scheduler:
-  scheduler:
-    resources:
-      requests:
-        cpu: 1
-        memory: 2Gi
-      limits:
-        cpu: 4
-        memory: 2Gi
-schedulerConfig:
-  schedulerConfigYaml: |-
-    ---
-    apiVersion: kubescheduler.config.k8s.io/v1
-    kind: KubeSchedulerConfiguration
-    leaderElection:
-      leaderElect: false
-    profiles:
-    - schedulerName: kaschnit-scheduler
-      plugins:
-        multiPoint:
-          enabled:
-          - name: QuotaAwarePreemption
-        postFilter:
-          enabled:
-          - name: QuotaAwarePreemption
-          disabled:
-          - name: "*"
+  resources:
+    requests:
+      cpu: 1
+      memory: 2Gi
+    limits:
+      cpu: 4
+      memory: 2Gi

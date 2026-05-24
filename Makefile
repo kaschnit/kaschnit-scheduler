@@ -8,7 +8,6 @@ SHELL = /usr/bin/env bash -o pipefail
 GO ?= go
 KUBECTL ?= $(GO) tool k8s.io/kubernetes/cmd/kubectl
 KIND ?= $(GO) tool sigs.k8s.io/kind
-KUSTOMIZE ?= $(GO) tool sigs.k8s.io/kustomize/kustomize/v5
 GOLANGCI_LINT ?= $(GO) tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 KO ?= $(GO) tool github.com/google/ko
 KUBEBUILDER ?= $(GO) tool sigs.k8s.io/kubebuilder/v4
@@ -17,7 +16,6 @@ CLIENT_GEN ?= $(GO) tool k8s.io/code-generator/cmd/client-gen
 LISTER_GEN ?= $(GO) tool k8s.io/code-generator/cmd/lister-gen
 INFORMER_GEN ?= $(GO) tool k8s.io/code-generator/cmd/informer-gen
 HELM ?= $(GO) tool helm.sh/helm/v4/cmd/helm
-HELMIFY ?= $(GO) tool github.com/arttor/helmify/cmd/helmify
 
 MODULE := $(shell $(GO) list -m)
 
@@ -37,7 +35,9 @@ IMG_DIR := $(BUILD_DIR)/image
 IMG_TAR_FILE := $(IMG_DIR)/scheduler.tar
 
 # Helm
-CHARTS_DIR := $(BUILD_DIR)/charts
+CHART_DIR := charts/kaschnit-scheduler
+CHART_SRC_DIR := $(CURDIR)/$(CHART_DIR)
+CHART_BUILD_DIR := $(BUILD_DIR)/$(CHART_DIR)
 
 # Generated manifests
 BUILD_MANIFEST_DIR := $(BUILD_DIR)/manifests
@@ -54,8 +54,8 @@ $(IMG_DIR):
 $(BUILD_MANIFEST_DIR):
 	mkdir -p "$(BUILD_MANIFEST_DIR)"
 
-$(CHARTS_DIR):
-	mkdir -p "$(CHARTS_DIR)"
+$(CHART_BUILD_DIR):
+	mkdir -p "$(CHART_BUILD_DIR)"
 
 ##@ General
 
@@ -73,16 +73,11 @@ clean: ## Clean up files.
 ##@ Development
 
 .PHONY: generate
-generate: controller-gen-objects generate-k8s-clients controller-gen-manifests ## Generate code.
+generate: controller-gen-objects generate-k8s-clients ## Generate code.
 
 .PHONY: controller-gen-objects
 controller-gen-objects:
 	$(CONTROLLER_GEN) object paths=./apis/...
-
-.PHONY: controller-gen-manifests
-controller-gen-manifests: controller-gen-objects generate-k8s-clients $(BUILD_MANIFEST_DIR)
-	$(CONTROLLER_GEN) paths=./apis/... crd:crdVersions=v1 output:crd:artifacts:config=$(BUILD_MANIFEST_DIR)
-	$(CONTROLLER_GEN) paths=./cmd/... rbac:roleName=kaschnit-scheduler output:rbac:artifacts:config=$(BUILD_MANIFEST_DIR)	
 
 .PHONY: generate-k8s-clients
 generate-k8s-clients: k8s-client-gen k8s-lister-gen k8s-informer-gen
@@ -164,13 +159,10 @@ image: generate $(IMG_DIR) ## Build an image and optionally push it.
 			$(CMD)
 
 .PHONY: chart
-chart: generate image ## Build a Helm chart.
-	find $(BUILD_MANIFEST_DIR)/ manifests/ \
-		-type f \
-		-name "*.yaml" \
-		-exec cat {} + \
-		| \
-		$(HELMIFY) -crd-dir -image-pull-secrets $(CHARTS_DIR)/kaschnit-scheduler
+chart: generate image $(CHART_BUILD_DIR) ## Build a Helm chart.
+	cp -r $(CHART_SRC_DIR)/* $(CHART_BUILD_DIR)
+	$(CONTROLLER_GEN) paths=./apis/... crd:crdVersions=v1 output:crd:artifacts:config=$(CHART_BUILD_DIR)/templates
+	$(CONTROLLER_GEN) paths=./cmd/... rbac:roleName=kaschnit-scheduler-scheduler output:rbac:artifacts:config=$(CHART_BUILD_DIR)/templates
 
 .PHONY: kind-delete
 kind-delete: ## Delete the KIND testing cluster.
@@ -183,7 +175,7 @@ kind-create: kind-delete ## Create a KIND cluster for testing.
 .PHONY: kind-deploy
 kind-deploy: image chart kind-create ## Deploy the scheduler to a KIND cluster for testing.
 	$(KIND) load image-archive $(IMG_TAR_FILE) --name "$(KIND_CLUSTER_NAME)"
-	$(HELM) install kaschnit-scheduler $(CHARTS_DIR)/kaschnit-scheduler \
+	$(HELM) install kaschnit-scheduler $(CHART_BUILD_DIR) \
 		--values test/kind/values.yaml \
 		--namespace kaschnit-scheduler \
 		--create-namespace

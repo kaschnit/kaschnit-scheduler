@@ -1,0 +1,66 @@
+---
+scheduler:
+  profiles:
+  - name: kaschnit-scheduler
+    plugins:
+      multiPoint:
+        enabled:
+        - name: QuotaAwarePreemption
+      postFilter:
+        enabled:
+        - name: QuotaAwarePreemption
+        disabled:
+        - name: "*"
+  replicas: 1
+  priorityClassName: "system-cluster-critical"
+  image:
+    repository: "kaschnit-scheduler"
+    tag: "development"
+    pullPolicy: IfNotPresent
+  configDir: /etc/kubernetes
+  port: 10259
+  resources:
+    requests:
+      cpu: 100m
+      memory: 100Mi
+    limits:
+      cpu: 100m
+      memory: 100Mi
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    privileged: false
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+      - ALL
+  hostNetwork: false
+  nodeSelector: {}
+  tolerations: []
+  topologySpreadConstraints: []
+  probes:
+    liveness:
+      enabled: true
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 1
+      failureThreshold: 3
+      successThreshold: 1
+    readiness:
+      enabled: true
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 1
+      failureThreshold: 3
+      successThreshold: 1
+serviceAccount:
+  name: ""
+  annotations: {}
+  automountToken: true
+  imagePullSecrets: []
