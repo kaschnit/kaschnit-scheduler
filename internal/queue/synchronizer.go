@@ -3,7 +3,6 @@ package queue
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	schedv1 "github.com/kaschnit/kaschnit-scheduler/apis/scheduling/v1"
@@ -165,8 +164,6 @@ func (syn *Synchronizer) addQueue(obj any) {
 		WithQuotaMax(queueObj.Spec.Quota.Max),
 		WithLabels(labels.Set(queueObj.Labels)),
 		WithVictimSelector(victimQSelector))
-
-	fmt.Printf("Queue Added: %s\n", queueObj.GetName())
 }
 
 func (syn *Synchronizer) updateQueue(oldObj, newObj any) {
