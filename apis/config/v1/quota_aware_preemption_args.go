@@ -5,15 +5,11 @@ import (
 )
 
 type PreemptionConfig struct {
-	// PercentageOfNodesToScore is the percentage of nodes to score.
-	// This can be used to reduce the ndoe search space for the best node to preempt.
-	// If not provided, 100% of nodes will be used.
-	PercentageOfNodesToScore *float32 `json:"percentageOfNodesToScore"`
-	// MaxNodesToScore is the maximum number of nodes to score.
-	// This limits the configured PercentageOfNodesToScore.
-	// If not provided, the absolute number of preemption candidates to score is
+	// MaxCandidateNodes is the maximum number of victim nodes to collect for preemption.
+	// This can be used to reduce the node search space for the best node to preempt.
+	// If not provided, the absolute number of preemption victim nodes to score is
 	// not bounded.
-	MaxNodesToScore *int32 `json:"maxNodesToScore"`
+	MaxCandidateNodes *int32 `json:"maxCandidateNodes,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -23,7 +19,6 @@ type PreemptionConfig struct {
 type QuotaAwarePreemptionArgs struct {
 	metav1.TypeMeta `json:",inline"`
 
-	// EnableAsyncPreemption is whether to enable async preemption.
-	// Defaults to false.
-	Preemption PreemptionConfig `json:"enableAsyncPreemption"`
+	// Preemption is the preemption config.
+	Preemption *PreemptionConfig `json:"preemption,omitempty"`
 }

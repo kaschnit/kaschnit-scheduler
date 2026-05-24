@@ -42,13 +42,8 @@ func (p *preemptor) CandidatesToVictimsMap(candidates []preemption.Candidate) ma
 
 // GetOffsetAndNumCandidates implements [preemption.Interface].
 func (p *preemptor) GetOffsetAndNumCandidates(nodes int32) (int32, int32) {
-	// If percentage is provided, reduce number of candidates down to that percentage.
-	if percent := p.cfg.PercentageOfNodesToScore; percent != nil {
-		nodes = int32((float32(nodes) * *percent) / 100)
-	}
-
 	// If max is provided, ensure number of candidates is no greater than the max.
-	if max := p.cfg.MaxNodesToScore; max != nil {
+	if max := p.cfg.MaxCandidateNodes; max != nil {
 		nodes = min(nodes, *max)
 	}
 

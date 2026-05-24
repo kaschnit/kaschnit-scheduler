@@ -53,10 +53,15 @@ var (
 func NewPlugin(ctx context.Context, rawArgs runtime.Object, fh fwk.Handle, fts feature.Features) (fwk.Plugin, error) {
 	logger := klog.FromContext(ctx).WithValues("plugin", PluginName)
 
+	logger.Info("Parsing args for plugin")
+
 	var args configv1.QuotaAwarePreemptionArgs
 	if err := schedruntime.DecodeInto(rawArgs, &args); err != nil {
 		return nil, err
 	}
+
+	logger.Info("Got args for plugin",
+		"args", args)
 
 	logger.Info("Setting up queue manager for plugin")
 	queueMgr := queue.NewManager()

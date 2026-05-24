@@ -1,16 +1,20 @@
 ---
 scheduler:
   profiles:
-  - name: kaschnit-scheduler
-    plugins:
-      multiPoint:
-        enabled:
-        - name: QuotaAwarePreemption
-      postFilter:
-        enabled:
-        - name: QuotaAwarePreemption
-        disabled:
-        - name: "*"
+    kaschnit-scheduler:
+      plugins:
+        multiPoint:
+          enabled:
+          - name: QuotaAwarePreemption
+        postFilter:
+          enabled:
+          - name: QuotaAwarePreemption
+          disabled:
+          - name: "*"
+      pluginConfig:
+        quotaAwarePreemption:
+          args: {}
+  additionalProfiles: []
   replicas: 1
   priorityClassName: "system-cluster-critical"
   image:
