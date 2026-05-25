@@ -5,7 +5,6 @@ import (
 
 	"github.com/kaschnit/kaschnit-scheduler/internal/queue"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,70 +20,46 @@ func TestQuota(t *testing.T) {
 
 		t.Run("add pods to quota", func(t *testing.T) {
 			// Add pod1 cpu
-			err := quota.AddPodIfNotPresent(pod1)
-			require.NoError(t, err)
+			quota.AddPodIfNotPresent(pod1)
 			assert.Equal(t, framework.Resource{MilliCPU: 1000, AllowedPodNumber: 1}, *quota.Used)
 
 			// Add pod2 cpu
-			err = quota.AddPodIfNotPresent(pod2)
-			require.NoError(t, err)
+			quota.AddPodIfNotPresent(pod2)
 			assert.Equal(t, framework.Resource{MilliCPU: 3000, AllowedPodNumber: 2}, *quota.Used)
 
 			t.Run("idempotent", func(t *testing.T) {
 				// Add pod1 cpu again does nothing
-				err := quota.AddPodIfNotPresent(pod1)
-				require.NoError(t, err)
+				quota.AddPodIfNotPresent(pod1)
 				assert.Equal(t, framework.Resource{MilliCPU: 3000, AllowedPodNumber: 2}, *quota.Used) // No change
 			})
 		})
 
 		t.Run("delete pods from quota", func(t *testing.T) {
 			// Delete pod1 cpu
-			err := quota.DeletePodIfPresent(pod1)
-			require.NoError(t, err)
+			quota.DeletePodIfPresent(pod1)
 			assert.Equal(t, framework.Resource{MilliCPU: 2000, AllowedPodNumber: 1}, *quota.Used)
 
 			t.Run("idempotent", func(t *testing.T) {
 				// Remove pod1 again does nothing
-				err := quota.DeletePodIfPresent(pod1)
-				require.NoError(t, err)
+				quota.DeletePodIfPresent(pod1)
 				assert.Equal(t, framework.Resource{MilliCPU: 2000, AllowedPodNumber: 1}, *quota.Used) // No change
 			})
 
 			t.Run("delete random pod does nothing", func(t *testing.T) {
 				podNotInQuota := newPodWithReq(corev1.ResourceList{corev1.ResourceCPU: *resource.NewQuantity(1, resource.DecimalSI)})
-				err := quota.DeletePodIfPresent(podNotInQuota)
-				require.NoError(t, err)
+				quota.DeletePodIfPresent(podNotInQuota)
 				assert.Equal(t, framework.Resource{MilliCPU: 2000, AllowedPodNumber: 1}, *quota.Used) // No change
 			})
 
 			// Delete pod2 cpu
-			err = quota.DeletePodIfPresent(pod2)
-			require.NoError(t, err)
+			quota.DeletePodIfPresent(pod2)
 			assert.Equal(t, framework.Resource{}, *quota.Used)
 
 			t.Run("delete random pod from empty quota does nothing", func(t *testing.T) {
 				podNotInQuota := newPodWithReq(corev1.ResourceList{corev1.ResourceCPU: *resource.NewQuantity(1, resource.DecimalSI)})
-				err := quota.DeletePodIfPresent(podNotInQuota)
-				require.NoError(t, err)
+				quota.DeletePodIfPresent(podNotInQuota)
 				assert.Equal(t, framework.Resource{}, *quota.Used) // No change
 			})
-		})
-	})
-
-	t.Run("error on pod with no UID", func(t *testing.T) {
-		quota := queue.NewQuota(nil)
-		pod := newPodWithReq(corev1.ResourceList{corev1.ResourceCPU: *resource.NewQuantity(1, resource.DecimalSI)})
-		pod.UID = ""
-
-		t.Run("add pod", func(t *testing.T) {
-			err := quota.AddPodIfNotPresent(pod)
-			require.Error(t, err)
-		})
-
-		t.Run("delete pod", func(t *testing.T) {
-			err := quota.DeletePodIfPresent(pod)
-			require.Error(t, err)
 		})
 	})
 }

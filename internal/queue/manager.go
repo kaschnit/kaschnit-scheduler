@@ -147,7 +147,9 @@ func (qm *Manager) addPodIfNotPresentNoLock(pod *corev1.Pod) error {
 		return fmt.Errorf("%w: queue '%s' does not exist", ErrAddPodToQuota, queueName)
 	}
 
-	return q.Quota().AddPodIfNotPresent(pod)
+	q.Quota().AddPodIfNotPresent(pod)
+
+	return nil
 }
 
 // DeletePodIfPresent removes the pod to the quota if the pod has a quota.
@@ -174,7 +176,9 @@ func (qm *Manager) deletePodIfPresentNoLock(pod *corev1.Pod) error {
 		return fmt.Errorf("%w: queue '%s' does not exist", ErrRemovePodFromQuota, queueName)
 	}
 
-	return q.Quota().DeletePodIfPresent(pod)
+	q.Quota().DeletePodIfPresent(pod)
+
+	return nil
 }
 
 // Clone creates a clone of the [Manager].

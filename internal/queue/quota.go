@@ -8,6 +8,7 @@ import (
 	"github.com/kaschnit/kaschnit-scheduler/internal/resmath"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
@@ -18,14 +19,14 @@ type Quota struct {
 	// Used is the used resources.
 	Used *framework.Resource
 	// PodsByName are pods that currently contribute to quota.
-	PodsByName map[string]*corev1.Pod
+	PodsByName map[types.UID]*corev1.Pod
 }
 
 // NewQuota creates a new [Quota].
 func NewQuota(max corev1.ResourceList) *Quota {
 	quota := &Quota{
 		Used:       framework.NewResource(nil),
-		PodsByName: make(map[string]*corev1.Pod),
+		PodsByName: make(map[types.UID]*corev1.Pod),
 	}
 
 	quota.SetMax(max)
@@ -53,36 +54,30 @@ func (q *Quota) SetMax(max corev1.ResourceList) {
 }
 
 // AddPodIfNotPresent adds the pod to the quota if it's not part of the quota.
-func (q *Quota) AddPodIfNotPresent(pod *corev1.Pod) error {
-	key, err := framework.GetPodKey(pod)
-	if err != nil {
-		return err
+func (q *Quota) AddPodIfNotPresent(pod *corev1.Pod) {
+	if pod == nil {
+		return
 	}
 
-	_, wasTrackingPod := q.PodsByName[key]
+	_, wasTrackingPod := q.PodsByName[pod.UID]
 
-	q.PodsByName[key] = pod
+	q.PodsByName[pod.UID] = pod
 
 	if !wasTrackingPod {
 		resmath.AddInPlace(q.Used, resconv.FromPod(pod))
 	}
-
-	return nil
 }
 
 // DeletePodIfPresent removes the pod from the quota if it's part of the quota.
-func (q *Quota) DeletePodIfPresent(pod *corev1.Pod) error {
-	key, err := framework.GetPodKey(pod)
-	if err != nil {
-		return err
+func (q *Quota) DeletePodIfPresent(pod *corev1.Pod) {
+	if pod == nil {
+		return
 	}
 
-	if _, wasTrackingPod := q.PodsByName[key]; wasTrackingPod {
-		delete(q.PodsByName, key)
+	if _, wasTrackingPod := q.PodsByName[pod.UID]; wasTrackingPod {
+		delete(q.PodsByName, pod.UID)
 		resmath.SubtractInPlace(q.Used, resconv.FromPod(pod))
 	}
-
-	return nil
 }
 
 // WouldPutOverMax returns true if request would put the quota over its max

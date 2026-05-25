@@ -11,7 +11,7 @@ import (
 	"github.com/kaschnit/kaschnit-scheduler/internal/boolstr"
 	"github.com/kaschnit/kaschnit-scheduler/internal/labelutil"
 	"github.com/kaschnit/kaschnit-scheduler/internal/pdbutil"
-	"github.com/kaschnit/kaschnit-scheduler/internal/resmath"
+	"github.com/kaschnit/kaschnit-scheduler/internal/resconv"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
@@ -128,12 +128,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 		return false, "Unable to find info of nominated node."
 	}
 
-	// Fetch the requested resources.
-	requestedResources, err := p.stateMgr.ReadRequstedResource()
-	if err != nil {
-		logger.Error(err, "Failed to read requestedResources from cycleState")
-		return false, "Not eligible to preempt due to failed to read requested resources from cycleState."
-	}
+	requestedRes := resconv.FromPod(pod)
 
 	// At this point, we have a pod that has a still-valid node nomination.
 	// This means it has already selected victims on the nominated node.
@@ -145,8 +140,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 	// We don't want to perform victim selection if we don't have to because it's expensive.
 	preemptorPriority := corev1helpers.PodPriority(pod)
 	if preemptorQ != nil { // Quota-aware preemption path
-		wouldBeOverQuota := preemptorQ.Quota().WouldPutOverMax(
-			resmath.Add(&requestedResources.Request, &requestedResources.NominatedReqInQuota))
+		wouldBeOverQuota := preemptorQ.Quota().WouldPutOverMax(requestedRes)
 
 		// Check for terminating pods (marked for deletion) that will clear up space for preemptor.
 		// This check prevents additional preemptions unnecessarily.
@@ -229,11 +223,7 @@ func (p *preemptor) SelectVictimsOnNode(
 
 	logger.Info("Selecting victims on node for preemption")
 
-	requestedResources, err := p.stateMgr.ReadRequstedResource()
-	if err != nil {
-		logger.Error(err, "Failed to read requestedResources from cycleState")
-		return nil, 0, fwk.NewStatus(fwk.Unschedulable, "Failed to read preFilterState from cycleState")
-	}
+	requestedRes := resconv.FromPod(pod)
 
 	queueSnapshot, err := p.stateMgr.ReadQueueSnapshot()
 	if err != nil {
@@ -337,12 +327,12 @@ func (p *preemptor) SelectVictimsOnNode(
 		return nil, 0, status
 	}
 
-	if preemptorQ != nil && preemptorQ.Quota().WouldPutOverMax(&requestedResources.Request) {
+	if preemptorQ != nil && preemptorQ.Quota().WouldPutOverMax(requestedRes) {
 		// If there's a quota and it's exceeded even after removing all potential victims,
 		// there's nothing we can do on this node to make pods schedule. So this node is
 		// not eligible for preemption (i.e. has no eligible victims).
 		logger.Info("Preemptor does not fit quota after removing potential victims from node",
-			"requested", requestedResources.Request,
+			"requested", requestedRes,
 			"used", preemptorQ.Quota().Used,
 			"max", preemptorQ.Quota().Max)
 		return nil, 0, fwk.NewStatus(fwk.Unschedulable,
@@ -392,8 +382,7 @@ func (p *preemptor) SelectVictimsOnNode(
 		// Check if the quotas are in violation after adding back the potential victim.
 		// This is to ensure that victims are selected such that the quota is reduced
 		// below the max to make room for the preemptor.
-		if preemptorQ != nil && preemptorQ.Quota().WouldPutOverMax(
-			resmath.Add(&requestedResources.Request, &requestedResources.NominatedReqInQuota)) {
+		if preemptorQ != nil && preemptorQ.Quota().WouldPutOverMax(requestedRes) {
 			// Pod did not fit in quota with preemptor; this pod should indeed be a victim.
 			if err := removePod(pi); err != nil {
 				return false, err
