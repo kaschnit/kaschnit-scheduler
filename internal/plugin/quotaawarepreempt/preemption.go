@@ -65,7 +65,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 	pod *corev1.Pod,
 	nominatedNodeStatus *fwk.Status,
 ) (bool, string) {
-	logger := p.logger
+	logger := p.logger.WithValues("preemptorPod", klog.KObj(pod))
 
 	// Check the PreemptionPolicy from the PriorityClass.
 	// If not provided, preemption is allowed (default is PreemptLowerPriority).
@@ -103,6 +103,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 	// If no nominated node for this pod, then it has not yet been considered for preemption.
 	// Thus is should be considered.
 	if len(pod.Status.NominatedNodeName) == 0 {
+		logger.V(5).Info("No nominated node, eligible to preempt")
 		return true, ""
 	}
 
@@ -114,6 +115,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 	// This logic is very similar to that of the in-tree DefaultPreemption plugin:
 	// https://github.com/kubernetes/kubernetes/blob/90608d95012a53ab5c359cf8fe37f06601e2aaf7/pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go#L371-L375
 	if nominatedNodeStatus.Code() == fwk.UnschedulableAndUnresolvable {
+		logger.Info("Nominated node is UnschedulableAndUnresolvable, eligible to preempt")
 		return true, ""
 	}
 
@@ -141,20 +143,6 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 	// on the nominated node; such terminations may indicate that the preemption resulting
 	// from the previous victim selection is still in-progress.
 	// We don't want to perform victim selection if we don't have to because it's expensive.
-	//
-	// Note that we may incorrectly conclude that we should select victims again due
-	// to the node snapshot not containing preemption victim. This may happen if the
-	// victims terminated.
-	// This should be fine; it will be handled during victim selection. The reprieval
-	// process will ensure that no victims are selected if there's now space on the node.
-	// This is not ideal because, again, victim selection is expensive; but it should not
-	// cause any correctness problems.
-	// 	TODO: How do we avoid this?
-	//  - It's confusing; it appears concerning when looking at scheduler logs.
-	//	- It also wastes time on victim selection that will select no victims.
-	//	- Idea: In SelectVictims, RunFilterPluginsWithNominatedPods as the very first step.
-	// 			If it succeeds, then don't perform victim selection; return no victims
-	// 			with a success status. This says "we fit on this node with no victims".
 	preemptorPriority := corev1helpers.PodPriority(pod)
 	if preemptorQ != nil { // Quota-aware preemption path
 		wouldBeOverQuota := preemptorQ.Quota().WouldPutOverMax(
@@ -162,38 +150,46 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 
 		// Check for terminating pods (marked for deletion) that will clear up space for preemptor.
 		// This check prevents additional preemptions unnecessarily.
+		logger.Info("Checking potential victim pods that would exclude eligibility")
 		for _, victimInfo := range nodeInfo.GetPods() {
+			victimLogger := logger.V(5).WithValues("victimPod", klog.KObj(victimInfo.GetPod()))
+
+			victimLogger.Info("Checking potential victim pod")
 			if !podTerminatingByPreemption(victimInfo.GetPod()) {
 				// Potential victim is not being deleted by preemption, move on to the next.
+				victimLogger.Info("Potential victim is not terminating via preemption, does not exclude eligibility")
 				continue
 			}
 			if corev1helpers.PodPriority(victimInfo.GetPod()) >= preemptorPriority {
 				// Terminating pod does not have lower priority.
 				// Thus it is not a preemption victim, it's just a terminating pod.
+				victimLogger.Info("Potential victim is not lower priority, does not exclude eligibility")
 				continue
 			}
 			if !boolstr.IsTrue(victimInfo.GetPod().Labels[scheduling.LabelKeyVictim]) {
 				// Terminating pod is not allowed to be a vicitm.
 				// So it is not a preemption victim, it's just a terminating pod.
+				victimLogger.Info("Potential victim does not have victim label, does not exclude eligibility")
 				continue
 			}
 
 			victimQ := queueSnapshot.QueueMgr.Get(victimInfo.GetPod())
 			if victimQ == nil {
 				// No quota to check for victim, move on to the next.
+				victimLogger.Info("Potential victim does not have a queue, does not exclude eligibility")
 				continue
 			}
 
 			if preemptorQ.Name() == victimQ.Name() {
 				// There is a terminating victim in the queue (sharing quota with preemptor) and of lower priority.
 				// This may free up room to schedule the preemptor, so no need to preempt.
-				return false, "Not eligible to preempt due to a terminating pod on the nominated node."
+				return false, "Not eligible to preempt due to a terminating preemption victim on the nominated node."
 			}
 			if preemptorQ.Name() != victimQ.Name() && !wouldBeOverQuota {
 				// There is a terminating victim in a different queue (not sharing quota with preemptor).
 				// The preemptor is also not going to be over its quota, and thus is schedulable in terms of quota.
 				// So, waiting for this victim to finish terminating will allow the preemptor to schedule.
-				return false, "Not eligible to preempt due to a terminating pod on the nominated node."
+				return false, "Not eligible to preempt due to a terminating preemption victim on the nominated node."
 			}
 		}
 	} else { // Vanilla preemption path

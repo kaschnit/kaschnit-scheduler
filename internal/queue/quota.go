@@ -1,13 +1,13 @@
 package queue
 
 import (
+	"maps"
 	"math"
 
 	"github.com/kaschnit/kaschnit-scheduler/internal/resconv"
 	"github.com/kaschnit/kaschnit-scheduler/internal/resmath"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
@@ -17,16 +17,15 @@ type Quota struct {
 	Max *framework.Resource
 	// Used is the used resources.
 	Used *framework.Resource
-	// Track the pods that currently contribute to quota.
-	// This helps with idempotency in quota tracking.
-	pods sets.Set[string]
+	// PodsByName are pods that currently contribute to quota.
+	PodsByName map[string]*corev1.Pod
 }
 
 // NewQuota creates a new [Quota].
 func NewQuota(max corev1.ResourceList) *Quota {
 	quota := &Quota{
-		Used: framework.NewResource(nil),
-		pods: sets.New[string](),
+		Used:       framework.NewResource(nil),
+		PodsByName: make(map[string]*corev1.Pod),
 	}
 
 	quota.SetMax(max)
@@ -34,6 +33,7 @@ func NewQuota(max corev1.ResourceList) *Quota {
 	return quota
 }
 
+// SetMax sets the quota's max.
 func (q *Quota) SetMax(max corev1.ResourceList) {
 	if max == nil {
 		max = corev1.ResourceList{}
@@ -59,12 +59,13 @@ func (q *Quota) AddPodIfNotPresent(pod *corev1.Pod) error {
 		return err
 	}
 
-	if q.pods.Has(key) {
-		return nil
-	}
+	_, wasTrackingPod := q.PodsByName[key]
 
-	q.pods.Insert(key)
-	resmath.AddInPlace(q.Used, resconv.FromPod(pod))
+	q.PodsByName[key] = pod
+
+	if !wasTrackingPod {
+		resmath.AddInPlace(q.Used, resconv.FromPod(pod))
+	}
 
 	return nil
 }
@@ -76,12 +77,10 @@ func (q *Quota) DeletePodIfPresent(pod *corev1.Pod) error {
 		return err
 	}
 
-	if !q.pods.Has(key) {
-		return nil
+	if _, wasTrackingPod := q.PodsByName[key]; wasTrackingPod {
+		delete(q.PodsByName, key)
+		resmath.SubtractInPlace(q.Used, resconv.FromPod(pod))
 	}
-
-	q.pods.Delete(key)
-	resmath.SubtractInPlace(q.Used, resconv.FromPod(pod))
 
 	return nil
 }
@@ -95,7 +94,7 @@ func (q *Quota) WouldPutOverMax(request *framework.Resource) bool {
 // Clone clones the [Quota].
 func (q *Quota) Clone() *Quota {
 	newQuotaUsage := &Quota{
-		pods: sets.New[string](),
+		PodsByName: maps.Clone(q.PodsByName),
 	}
 
 	if q.Max != nil {
@@ -103,10 +102,6 @@ func (q *Quota) Clone() *Quota {
 	}
 	if q.Used != nil {
 		newQuotaUsage.Used = q.Used.Clone()
-	}
-
-	for pod := range q.pods {
-		newQuotaUsage.pods.Insert(pod)
 	}
 
 	return newQuotaUsage

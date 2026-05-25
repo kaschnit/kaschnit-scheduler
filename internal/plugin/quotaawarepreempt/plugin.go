@@ -14,6 +14,8 @@ import (
 	"github.com/kaschnit/kaschnit-scheduler/internal/resmath"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
@@ -105,12 +107,15 @@ func (plugin *Plugin) PreFilter(
 	pod *corev1.Pod,
 	nodes []fwk.NodeInfo,
 ) (*fwk.PreFilterResult, *fwk.Status) {
+	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger)).WithValues("pod", klog.KObj(pod))
+	logger.Info("Running PreFilter")
+
 	stateMgr := NewStateManager(state)
 
 	qSnapshot := &QueueSnapshotState{
 		QueueMgr: plugin.queueMgr.Clone(),
 	}
-	stateMgr.WriteQueueSnapshot(qSnapshot)
+	defer stateMgr.WriteQueueSnapshot(qSnapshot)
 
 	podReq := resconv.FromPod(pod)
 
@@ -135,14 +140,13 @@ func (plugin *Plugin) PreFilter(
 				continue
 			}
 
-			nomQ := qSnapshot.QueueMgr.Get(nomPodInfo.GetPod())
-			if nomQ != nil {
-				nomResourceRequest := resconv.ToResourceList(resconv.FromPod(nomPodInfo.GetPod()))
+			if nomQ := qSnapshot.QueueMgr.Get(nomPodInfo.GetPod()); nomQ != nil {
 				// If they are subject to the same quota and nomPod is scheduled ahead of (higher priority than) pod,
 				// nomPod will be added to the nominatedReqInQuota.
 				// If they aren't subject to the same quota and the usage of nomQuota does not exceed min,
 				// p will be added to the totalNominatedResource.
 				if nomQ.Name() == podQ.Name() && corev1helpers.PodPriority(nomPodInfo.GetPod()) >= corev1helpers.PodPriority(pod) {
+					nomResourceRequest := resconv.ToResourceList(resconv.FromPod(nomPodInfo.GetPod()))
 					nominatedReqInQuota.Add(nomResourceRequest)
 				}
 			}
@@ -154,7 +158,71 @@ func (plugin *Plugin) PreFilter(
 		NominatedReqInQuota: nominatedReqInQuota,
 	})
 
-	if podQ.Quota().WouldPutOverMax(resmath.Add(&nominatedReqInQuota, podReq)) {
+	// If the pod has a nominated node for preemption, we must re-compute the quota for this
+	// pod's queue to ensure that quota snapshot is in sync with the state of the cycle snapshot.
+	// Quota is normally updated async by informer, so may be inconsistent.
+	//
+	// If we don't recompute this, we may return Unschedulable even if the preemptor's victim
+	// has already terminated. This will lead to preemption possibly running again, since the
+	// scheduler skips Filter and goes straight to PostFilter if PreFilter fails. In the preemption
+	// logic of PostFilter, we perform preemption again if the nominated node appears "stale" (has
+	// no terminating victims).
+	exceedsQuota := podQ.Quota().WouldPutOverMax(resmath.Add(&nominatedReqInQuota, podReq))
+	if len(pod.Status.NominatedNodeName) > 0 && exceedsQuota {
+		logger.Info("Pod with nominated node does not fit in quota, recomputing quota",
+			"used", *podQ.Quota().Used,
+			"max", *podQ.Quota().Max,
+			"podReq", podReq,
+			"nominatedReqInQuota", nominatedReqInQuota)
+
+		nomNodeInfo, err := plugin.fh.SnapshotSharedLister().NodeInfos().Get(pod.Status.NominatedNodeName)
+		if nomNodeInfo == nil || err != nil {
+			// Nominated node doesn't seem to exist anymore, so scheduling on this node
+			// is not possible and not resolvable by preemption.
+			return nil, fwk.NewStatus(fwk.UnschedulableAndUnresolvable,
+				fmt.Sprintf("Error getting node from snapshot: %v", err))
+		}
+
+		podsIDsOnNode := make(sets.Set[types.UID], len(nomNodeInfo.GetPods()))
+		for _, podInfo := range nomNodeInfo.GetPods() {
+			podsIDsOnNode.Insert(podInfo.GetPod().UID)
+		}
+
+		for _, otherPod := range podQ.Quota().PodsByName {
+			if otherPod.Spec.NodeName != pod.Status.NominatedNodeName {
+				// Pod is not on the nominated node, don't remove from quota.
+				continue
+			}
+			if podsIDsOnNode.Has(otherPod.UID) {
+				// Pod is still valid, don't remove from quota.
+				continue
+			}
+
+			// Pod no longer exists on the nominated node, meaning quota snapshot has delay
+			// compared to the scheduling cycle snapshot. Remove pod from quota snapshot.
+			logger.Info("Removing pod from quota snapshot to keep in sync with cycle snapshot")
+			if err := podQ.Quota().DeletePodIfPresent(otherPod); err != nil {
+				return nil, fwk.NewStatus(fwk.Error,
+					fmt.Sprintf("Error removing pod from quota snapshot: %v", err))
+			}
+		}
+
+		exceedsQuota = podQ.Quota().WouldPutOverMax(resmath.Add(&nominatedReqInQuota, podReq))
+		logger.Info("Synced pod's quota with snapshot",
+			"used", *podQ.Quota().Used,
+			"max", *podQ.Quota().Max,
+			"podReq", *podReq,
+			"nominatedReqInQuota", nominatedReqInQuota,
+			"exceedsQuotaAfterSync", exceedsQuota)
+	}
+
+	if exceedsQuota {
+		logger.Info("Pod does not fit in quota",
+			"used", *podQ.Quota().Used,
+			"max", *podQ.Quota().Max,
+			"podReq", *podReq,
+			"nominatedReqInQuota", nominatedReqInQuota)
+
 		return nil, fwk.NewStatus(fwk.Unschedulable,
 			fmt.Sprintf("Not eligible for scheduling because queue %s exceeds quota (used=%+v, max=%+v)",
 				podQ.Name(), podQ.Quota().Used, podQ.Quota().Max))
