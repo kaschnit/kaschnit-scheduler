@@ -221,9 +221,14 @@ func (p *preemptor) SelectVictimsOnNode(
 	logger := p.logger.WithValues(
 		"preemptor", klog.KObj(pod),
 		"node", klog.KObj(nodeInfo.Node()))
-	stateMgr := NewStateManager(state)
-
 	logger.Info("Selecting victims on node for preemption")
+
+	// Note that we use the state passed in to SelectVictimsOnNode.
+	// This state is fresh on each call to SelectVictimsOnNode so we can simulate
+	// preemption with a clean state each time.
+	// It's not the same as the preemptor's cycleState because it persists changes
+	// when calling simulated PreFilter/Filter/etc.
+	stateMgr := NewStateManager(state)
 
 	requestedRes := resconv.FromPod(pod)
 
@@ -243,9 +248,6 @@ func (p *preemptor) SelectVictimsOnNode(
 		if !status.IsSuccess() {
 			return status.AsError()
 		}
-		if err := queueSnapshot.QueueMgr.DeletePodIfPresent(pi.GetPod()); err != nil {
-			return err
-		}
 		return nil
 	}
 
@@ -256,9 +258,6 @@ func (p *preemptor) SelectVictimsOnNode(
 		status := p.fh.RunPreFilterExtensionAddPod(ctx, state, pod, pi, nodeInfo)
 		if !status.IsSuccess() {
 			return status.AsError()
-		}
-		if err := queueSnapshot.QueueMgr.AddPodIfNotPresent(pi.GetPod()); err != nil {
-			return err
 		}
 		return nil
 	}
