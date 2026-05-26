@@ -20,5 +20,5 @@ type QuotaAwarePreemptionArgs struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// Preemption is the preemption config.
-	Preemption *PreemptionConfig `json:"preemption,omitempty"`
+	Preemption PreemptionConfig `json:"preemption,omitempty"`
 }

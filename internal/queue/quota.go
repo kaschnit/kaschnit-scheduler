@@ -80,6 +80,22 @@ func (q *Quota) DeletePodIfPresent(pod *corev1.Pod) {
 	}
 }
 
+// DeletePodsFunc deletes the pods matching the predicate from the quota.
+// The entire set of the quota's pods is iterated and checked against the predicate.
+func (q *Quota) DeletePodsFunc(predicate func(*corev1.Pod) bool) {
+	for _, otherPod := range q.PodsByName {
+		if predicate(otherPod) {
+			q.DeletePodIfPresent(otherPod)
+		}
+	}
+}
+
+// ContainsPod returns true if the pod is counted towards the quota.
+func (q *Quota) ContainsPod(pod *corev1.Pod) bool {
+	_, ok := q.PodsByName[pod.UID]
+	return ok
+}
+
 // WouldPutOverMax returns true if request would put the quota over its max
 // when added to the used amount.
 func (q *Quota) WouldPutOverMax(request *framework.Resource) bool {

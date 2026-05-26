@@ -23,10 +23,10 @@ import (
 )
 
 type preemptor struct {
-	logger   klog.Logger
-	fh       fwk.Handle
-	stateMgr *StateManager
-	cfg      configv1.PreemptionConfig
+	logger     klog.Logger
+	fh         fwk.Handle
+	cycleState fwk.CycleState
+	cfg        configv1.PreemptionConfig
 }
 
 var _ preemption.Interface = (*preemptor)(nil)
@@ -66,6 +66,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 	nominatedNodeStatus *fwk.Status,
 ) (bool, string) {
 	logger := p.logger.WithValues("preemptorPod", klog.KObj(pod))
+	stateMgr := NewStateManager(p.cycleState)
 
 	// Check the PreemptionPolicy from the PriorityClass.
 	// If not provided, preemption is allowed (default is PreemptLowerPriority).
@@ -87,7 +88,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 	}
 
 	// Fetch the queue snapshot.
-	queueSnapshot, err := p.stateMgr.ReadQueueSnapshot()
+	queueSnapshot, err := stateMgr.ReadQueueSnapshot()
 	if err != nil {
 		logger.Error(err, "Failed to read queueSnapshot from cycleState")
 		return false, "Not eligible to preempt due to failed to read queue snapshot from cycleState."
@@ -220,12 +221,13 @@ func (p *preemptor) SelectVictimsOnNode(
 	logger := p.logger.WithValues(
 		"preemptor", klog.KObj(pod),
 		"node", klog.KObj(nodeInfo.Node()))
+	stateMgr := NewStateManager(state)
 
 	logger.Info("Selecting victims on node for preemption")
 
 	requestedRes := resconv.FromPod(pod)
 
-	queueSnapshot, err := p.stateMgr.ReadQueueSnapshot()
+	queueSnapshot, err := stateMgr.ReadQueueSnapshot()
 	if err != nil {
 		logger.Error(err, "Failed to read queueSnapshot from cycleState")
 		return nil, 0, fwk.NewStatus(fwk.Unschedulable, "Failed to read queueSnapshot from cycleState")

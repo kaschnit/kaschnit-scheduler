@@ -7,14 +7,13 @@ import (
 
 	configv1 "github.com/kaschnit/kaschnit-scheduler/apis/config/v1"
 	schedv1 "github.com/kaschnit/kaschnit-scheduler/apis/scheduling/v1"
+	"github.com/kaschnit/kaschnit-scheduler/internal/fwkutil"
 	schedclients "github.com/kaschnit/kaschnit-scheduler/internal/generated/clients/scheduling"
 	schedinformers "github.com/kaschnit/kaschnit-scheduler/internal/generated/informers/externalversions"
 	"github.com/kaschnit/kaschnit-scheduler/internal/queue"
 	"github.com/kaschnit/kaschnit-scheduler/internal/resconv"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/sets"
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
@@ -105,13 +104,13 @@ func (plugin *Plugin) PreFilter(
 	pod *corev1.Pod,
 	nodes []fwk.NodeInfo,
 ) (*fwk.PreFilterResult, *fwk.Status) {
-	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger)).WithValues("pod", klog.KObj(pod))
+	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger)).WithValues(
+		"extensionPoint", "PreFilter",
+		"pod", klog.KObj(pod))
 	logger.Info("Running PreFilter")
 
 	stateMgr := NewStateManager(state)
-
 	requestedRes := resconv.FromPod(pod)
-
 	qSnapshot := &QueueSnapshotState{QueueMgr: plugin.queueMgr.Clone()}
 	// Defer because below code modifies the snapshot's queueMgr.
 	// Writing the state clones it, so we must write after all modifications.
@@ -127,8 +126,9 @@ func (plugin *Plugin) PreFilter(
 		return nil, fwk.NewStatus(fwk.Error, fmt.Sprintf("Error getting the node list: %v", err))
 	}
 
-	// Count pods with a NominatedNode against the quota, since they have effectively reserved some
-	// space on a target node.
+	// Count pods with a nominated node against the quota, since they have effectively reserved some
+	// space on a target node. Only count pods that are subject to the same quota and are same or
+	// higher priority, since these are effectively "ahead" of the current pod behing evaluated.
 	for _, node := range nodeList {
 		nominatedPods := plugin.fh.NominatedPodsForNode(node.Node().Name)
 		for _, nomPodInfo := range nominatedPods {
@@ -136,16 +136,21 @@ func (plugin *Plugin) PreFilter(
 				// Don't count this pod to avoid double-counting.
 				continue
 			}
-
-			if nomQ := qSnapshot.QueueMgr.Get(nomPodInfo.GetPod()); nomQ != nil {
-				// If they are subject to the same quota and nomPod is scheduled ahead of (higher priority than) pod,
-				// nomPod will be added to the nominatedReqInQuota.
-				// If they aren't subject to the same quota and the usage of nomQuota does not exceed min,
-				// p will be added to the totalNominatedResource.
-				if nomQ.Name() == podQ.Name() && corev1helpers.PodPriority(nomPodInfo.GetPod()) >= corev1helpers.PodPriority(pod) {
-					podQ.Quota().AddPodIfNotPresent(nomPodInfo.GetPod())
-				}
+			if corev1helpers.PodPriority(nomPodInfo.GetPod()) < corev1helpers.PodPriority(pod) {
+				// Lower priority, don't count against quota.
+				continue
 			}
+
+			nomQ := qSnapshot.QueueMgr.Get(nomPodInfo.GetPod())
+			if nomQ == nil || nomQ.Name() != podQ.Name() {
+				// Not assigned to a queue (meaning it's not subject to any quota) or it's
+				// not assigned to the same queue. In either case, it's not subject to the
+				// same quota as pod.
+				continue
+			}
+
+			// Count towards the quota.
+			podQ.Quota().AddPodIfNotPresent(nomPodInfo.GetPod())
 		}
 	}
 
@@ -158,59 +163,49 @@ func (plugin *Plugin) PreFilter(
 	// scheduler skips Filter and goes straight to PostFilter if PreFilter fails. In the preemption
 	// logic of PostFilter, we perform preemption again if the nominated node appears "stale" (has
 	// no terminating victims).
+	logger = logger.WithValues(
+		"used", podQ.Quota().Used,
+		"max", podQ.Quota().Max,
+		"requestedRes", requestedRes)
 	exceedsQuota := podQ.Quota().WouldPutOverMax(requestedRes)
 	if len(pod.Status.NominatedNodeName) > 0 && exceedsQuota {
-		logger.Info("Pod with nominated node does not fit in quota, recomputing quota",
-			"used", *podQ.Quota().Used,
-			"max", *podQ.Quota().Max,
-			"requestedRes", requestedRes)
+		logger.Info("Pod with nominated node does not fit in quota, recomputing quota")
 
-		nomNodeInfo, err := plugin.fh.SnapshotSharedLister().NodeInfos().Get(pod.Status.NominatedNodeName)
-		if nomNodeInfo == nil || err != nil {
+		podIDsOnNode, err := fwkutil.GetPodIDsOnNode(plugin.fh, pod.Status.NominatedNodeName)
+		if err != nil {
 			// Nominated node doesn't seem to exist anymore, so scheduling on this node
 			// is not possible and not resolvable by preemption.
 			return nil, fwk.NewStatus(fwk.UnschedulableAndUnresolvable,
-				fmt.Sprintf("Error getting node from snapshot: %v", err))
+				fmt.Sprintf("Error getting pod IDs from nominated node %s: %v",
+					pod.Status.NominatedNodeName, err))
 		}
 
-		podsIDsOnNode := make(sets.Set[types.UID], len(nomNodeInfo.GetPods()))
-		for _, podInfo := range nomNodeInfo.GetPods() {
-			podsIDsOnNode.Insert(podInfo.GetPod().UID)
-		}
-
-		for _, otherPod := range podQ.Quota().PodsByName {
-			if otherPod.Spec.NodeName != pod.Status.NominatedNodeName {
+		podQ.Quota().DeletePodsFunc(func(podToDelete *corev1.Pod) bool {
+			if podToDelete.Spec.NodeName != pod.Status.NominatedNodeName {
 				// Pod is not on the nominated node, don't remove from quota.
-				continue
+				return false
 			}
-			if podsIDsOnNode.Has(otherPod.UID) {
+			if podIDsOnNode.Has(podToDelete.UID) {
 				// Pod is still valid, don't remove from quota.
-				continue
+				return false
 			}
 
-			// Pod no longer exists on the nominated node, meaning quota snapshot has delay
-			// compared to the scheduling cycle snapshot. Remove pod from quota snapshot.
 			logger.Info("Removing pod from quota snapshot to keep in sync with cycle snapshot")
-			podQ.Quota().DeletePodIfPresent(otherPod)
-		}
+			return true
+		})
 
 		exceedsQuota = podQ.Quota().WouldPutOverMax(requestedRes)
 		logger.Info("Synced pod's quota with snapshot",
-			"used", podQ.Quota().Used,
-			"max", podQ.Quota().Max,
-			"requestedRes", requestedRes,
 			"exceedsQuotaAfterSync", exceedsQuota)
 	}
 
 	if exceedsQuota {
-		logger.Info("Pod does not fit in quota",
-			"used", podQ.Quota().Used,
-			"max", podQ.Quota().Max,
-			"requestedRes", requestedRes)
+		logger.Info("Pod does not fit in quota")
 
 		return nil, fwk.NewStatus(fwk.Unschedulable,
-			fmt.Sprintf("Not eligible for scheduling because queue %s exceeds quota (used=%+v, max=%+v)",
-				podQ.Name(), podQ.Quota().Used, podQ.Quota().Max))
+			fmt.Sprintf("Not eligible for scheduling because queue %s exceeds quota "+
+				"(used=%+v, max=%+v, requsted=%+v)",
+				podQ.Name(), podQ.Quota().Used, podQ.Quota().Max, requestedRes))
 	}
 
 	return nil, fwk.NewStatus(fwk.Success, "")
@@ -228,9 +223,10 @@ func (plugin *Plugin) PostFilter(
 	pod *corev1.Pod,
 	m fwk.NodeToStatusReader,
 ) (*fwk.PostFilterResult, *fwk.Status) {
-	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger))
-	logger.Info("Running PostFilter",
+	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger)).WithValues(
+		"extensionPoint", "PostFilter",
 		"pod", klog.KObj(pod))
+	logger.Info("Running PostFilter")
 
 	defer metrics.PreemptionAttempts.Inc()
 
@@ -238,16 +234,16 @@ func (plugin *Plugin) PostFilter(
 		plugin.Name(),
 		plugin.fh,
 		&preemptor{
-			logger:   plugin.logger,
-			fh:       plugin.fh,
-			stateMgr: NewStateManager(state),
+			logger:     plugin.logger,
+			fh:         plugin.fh,
+			cycleState: state,
+			cfg:        plugin.args.Preemption,
 		},
 		preemption.NewExecutor(plugin.fh, plugin.fts),
 	)
 
 	result, status := evaluator.Preempt(ctx, state, pod, m)
-	logger.Info("Got preemption evaluation result for pod",
-		"pod", klog.KObj(pod),
+	logger.Info("Got preemption result for pod",
 		"result", result,
 		"status", status)
 
@@ -263,6 +259,7 @@ func (plugin *Plugin) AddPod(
 	nodeInfo fwk.NodeInfo,
 ) *fwk.Status {
 	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger)).WithValues(
+		"extensionPoint", "AddPod",
 		"podToSchedule", klog.KObj(podToSchedule),
 		"podToAdd", klog.KObj(podInfoToAdd.GetPod()))
 
@@ -275,8 +272,7 @@ func (plugin *Plugin) AddPod(
 	}
 
 	if err := quotaSnapshot.QueueMgr.AddPodIfNotPresent(podInfoToAdd.GetPod()); err != nil {
-		logger.Error(err, "Failed to add Pod to its associated quota usage",
-			"pod", klog.KObj(podInfoToAdd.GetPod()))
+		logger.Error(err, "Failed to add Pod to its associated quota usage")
 	}
 
 	return fwk.NewStatus(fwk.Success, "")
@@ -291,6 +287,7 @@ func (plugin *Plugin) RemovePod(
 	nodeInfo fwk.NodeInfo,
 ) *fwk.Status {
 	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger)).WithValues(
+		"extensionPoint", "RemovePod",
 		"podToSchedule", klog.KObj(podToSchedule),
 		"podToRemove", klog.KObj(podInfoToRemove.GetPod()))
 
@@ -303,8 +300,7 @@ func (plugin *Plugin) RemovePod(
 	}
 
 	if err := quotaSnapshot.QueueMgr.DeletePodIfPresent(podInfoToRemove.GetPod()); err != nil {
-		logger.Error(err, "Failed to delete Pod from its associated quota usage",
-			"pod", klog.KObj(podInfoToRemove.GetPod()))
+		logger.Error(err, "Failed to delete Pod from its associated quota usage")
 	}
 
 	return fwk.NewStatus(fwk.Success, "")
@@ -312,10 +308,12 @@ func (plugin *Plugin) RemovePod(
 
 // Reserve implements [framework.ReservePlugin].
 func (plugin *Plugin) Reserve(ctx context.Context, state fwk.CycleState, pod *corev1.Pod, nodeName string) *fwk.Status {
-	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger)).WithValues("ExtensionPoint", "Reserve")
+	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger)).WithValues(
+		"extensionPoint", "Reserve",
+		"pod", klog.KObj(pod))
 
 	if err := plugin.queueMgr.AddPodIfNotPresent(pod); err != nil {
-		logger.Error(err, "Failed to add Pod to its associated queue quota", "pod", klog.KObj(pod))
+		logger.Error(err, "Failed to add Pod to its associated queue quota")
 		return fwk.NewStatus(fwk.Error, err.Error())
 	}
 
@@ -324,7 +322,9 @@ func (plugin *Plugin) Reserve(ctx context.Context, state fwk.CycleState, pod *co
 
 // Unreserve implements [framework.ReservePlugin].
 func (plugin *Plugin) Unreserve(ctx context.Context, state fwk.CycleState, pod *corev1.Pod, nodeName string) {
-	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger)).WithValues("ExtensionPoint", "Reserve")
+	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger)).WithValues(
+		"extensionPoint", "Unreserve",
+		"pod", klog.KObj(pod))
 
 	if err := plugin.queueMgr.DeletePodIfPresent(pod); err != nil {
 		logger.Error(err, "Failed to remove Pod from its associated queue quota", "pod", klog.KObj(pod))
