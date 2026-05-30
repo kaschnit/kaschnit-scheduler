@@ -1,9 +1,9 @@
-package clusterres_test
+package alloc_test
 
 import (
 	"testing"
 
-	"github.com/kaschnit/kaschnit-scheduler/internal/clusterres"
+	"github.com/kaschnit/kaschnit-scheduler/internal/alloc"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -24,13 +24,13 @@ func TestCounter(t *testing.T) {
 	})
 
 	t.Run("construct with nodes", func(t *testing.T) {
-		counter1 := clusterres.NewAllocatableCounter(node1)
+		counter1 := alloc.NewNodeAllocatableAggregator(node1)
 		assert.Equal(t, framework.Resource{
 			MilliCPU: 4000,
 			Memory:   16384,
 		}, *counter1.GetTotal().ToFrameworkResource())
 
-		counter2 := clusterres.NewAllocatableCounter(node2)
+		counter2 := alloc.NewNodeAllocatableAggregator(node2)
 		assert.Equal(t, framework.Resource{
 			MilliCPU: 8000,
 			Memory:   32768,
@@ -39,7 +39,7 @@ func TestCounter(t *testing.T) {
 			},
 		}, *counter2.GetTotal().ToFrameworkResource())
 
-		counter3 := clusterres.NewAllocatableCounter(node1, node2)
+		counter3 := alloc.NewNodeAllocatableAggregator(node1, node2)
 		assert.Equal(t, framework.Resource{
 			MilliCPU: 12000,
 			Memory:   49152,
@@ -50,7 +50,7 @@ func TestCounter(t *testing.T) {
 	})
 
 	t.Run("basic lifecycle", func(t *testing.T) {
-		counter := clusterres.NewAllocatableCounter()
+		counter := alloc.NewNodeAllocatableAggregator()
 
 		t.Run("starts in empty state", func(t *testing.T) {
 			assert.Equal(t, framework.Resource{}, *counter.GetTotal().ToFrameworkResource())

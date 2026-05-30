@@ -1,4 +1,4 @@
-package pdbutil
+package pdbeval
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -8,21 +8,21 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 )
 
-// EvaluatePodRemovalViolationsResult is the return value for [EvaluatePodRemovalViolations].
-type EvaluatePodRemovalViolationsResult struct {
+// CheckPodRemovalViolationsResult is the return value for [CheckPodRemovalViolations].
+type CheckPodRemovalViolationsResult struct {
 	// ViolatingPods are the pods that would cause PDB violation if they're removed.
 	ViolatingPods []fwk.PodInfo
 	// ViolatingPods are the pods that would not cause PDB violation if they're removed.
 	NonViolatingPods []fwk.PodInfo
 }
 
-// EvaluatePodRemovalViolations groups the given "pods" into two groups of "violatingPods"
+// CheckPodRemovalViolations groups the given "pods" into two groups of "violatingPods"
 // and "nonViolatingPods" based on whether their PDBs will be violated if they are
 // preempted.
 // This function is stable and does not change the order of received pods. So, if it
 // receives a sorted list, grouping will preserve the order of the input list.
-func EvaluatePodRemovalViolations(podInfos []fwk.PodInfo, pdbs []*policyv1.PodDisruptionBudget) EvaluatePodRemovalViolationsResult {
-	var result EvaluatePodRemovalViolationsResult
+func CheckPodRemovalViolations(podInfos []fwk.PodInfo, pdbs []*policyv1.PodDisruptionBudget) CheckPodRemovalViolationsResult {
+	var result CheckPodRemovalViolationsResult
 
 	pdbsAllowed := make([]int32, 0, len(pdbs))
 	for _, pdb := range pdbs {

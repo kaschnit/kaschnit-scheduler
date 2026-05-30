@@ -2,7 +2,7 @@ package queue
 
 import (
 	"github.com/kaschnit/kaschnit-scheduler/internal/alloc"
-	"github.com/kaschnit/kaschnit-scheduler/internal/labelutil"
+	"github.com/kaschnit/kaschnit-scheduler/internal/match"
 	"k8s.io/apimachinery/pkg/labels"
 )
 
@@ -15,7 +15,7 @@ type Queue struct {
 	// labels are this queue's labels.
 	labels labels.Labels
 	// victimSelector is the selector for victim queues.
-	victimSelector labelutil.Matcher
+	victimSelector match.LabelMatcher
 }
 
 // New creates a new queue with the provided options.
@@ -56,7 +56,7 @@ func (q *Queue) Labels() labels.Labels {
 }
 
 // VictimSelector returns the queue's victim queue selector.
-func (q *Queue) VictimSelector() labelutil.Matcher {
+func (q *Queue) VictimSelector() match.LabelMatcher {
 	if q == nil || q.victimSelector == nil {
 		return labels.Nothing()
 	}
@@ -107,7 +107,7 @@ func WithLabels(lbls labels.Labels) QueueOption {
 }
 
 // WithVictimSelector sets the victim selector of the queue.
-func WithVictimSelector(victimSelector labelutil.Matcher) QueueOption {
+func WithVictimSelector(victimSelector match.LabelMatcher) QueueOption {
 	return func(q *Queue) {
 		if victimSelector == nil {
 			victimSelector = labels.Nothing()

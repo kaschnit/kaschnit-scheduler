@@ -10,8 +10,8 @@ import (
 	"github.com/kaschnit/kaschnit-scheduler/apis/scheduling"
 	"github.com/kaschnit/kaschnit-scheduler/internal/alloc"
 	"github.com/kaschnit/kaschnit-scheduler/internal/boolstr"
-	"github.com/kaschnit/kaschnit-scheduler/internal/labelutil"
-	"github.com/kaschnit/kaschnit-scheduler/internal/pdbutil"
+	"github.com/kaschnit/kaschnit-scheduler/internal/match"
+	"github.com/kaschnit/kaschnit-scheduler/internal/pdbeval"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
@@ -97,7 +97,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 	preemptorQ := queueSnapshot.QueueMgr.Get(pod)
 
 	// Pod is not eligible to preempt if its victims selects no victim queues.
-	if labelutil.MatchesNothing(preemptorQ.VictimSelector()) {
+	if match.Nothing(preemptorQ.VictimSelector()) {
 		return false, "Not eligible to preempt due to queue's victim queue selector matching nothing."
 	}
 
@@ -400,7 +400,7 @@ func (p *preemptor) SelectVictimsOnNode(
 	}
 
 	numPDBViolationVictims := 0
-	pdbViolationEval := pdbutil.EvaluatePodRemovalViolations(potentialVictims, pdbs)
+	pdbViolationEval := pdbeval.CheckPodRemovalViolations(potentialVictims, pdbs)
 
 	logger.Info("Attempting reprieval on PDB-violating potential victims",
 		"numPDBViolatingPotentialVictims", len(pdbViolationEval.ViolatingPods))

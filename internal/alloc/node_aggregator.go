@@ -1,28 +1,27 @@
-package clusterres
+package alloc
 
 import (
 	"sync"
 
-	"github.com/kaschnit/kaschnit-scheduler/internal/alloc"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-// Counter counts resources belonging to nodes.
-type Counter struct {
+// NodeAggregator aggregates resources across nodes.
+type NodeAggregator struct {
 	nodeIDs    sets.Set[types.UID]
-	total      alloc.Resources
+	total      Resources
 	lock       sync.RWMutex
 	getNodeRes func(*corev1.Node) corev1.ResourceList
 }
 
-// NewAllocatableCounter creates a new [Counter] that counts
+// NewNodeAllocatableAggregator creates a new [NodeAggregator] that aggregates
 // allocatable resources of nodes.
-func NewAllocatableCounter(nodes ...*corev1.Node) *Counter {
-	counter := &Counter{
+func NewNodeAllocatableAggregator(nodes ...*corev1.Node) *NodeAggregator {
+	counter := &NodeAggregator{
 		nodeIDs: sets.New[types.UID](),
-		total:   make(alloc.Resources),
+		total:   make(Resources),
 		getNodeRes: func(node *corev1.Node) corev1.ResourceList {
 			return node.Status.Allocatable
 		},
@@ -34,7 +33,7 @@ func NewAllocatableCounter(nodes ...*corev1.Node) *Counter {
 }
 
 // GetTotal gets the total count of resources counted.
-func (counter *Counter) GetTotal() alloc.Resources {
+func (counter *NodeAggregator) GetTotal() Resources {
 	counter.lock.RLock()
 	defer counter.lock.RUnlock()
 
@@ -42,7 +41,7 @@ func (counter *Counter) GetTotal() alloc.Resources {
 }
 
 // Put adds or updates the node in the counter.
-func (counter *Counter) Put(node *corev1.Node) {
+func (counter *NodeAggregator) Put(node *corev1.Node) {
 	counter.lock.Lock()
 	defer counter.lock.Unlock()
 
@@ -51,7 +50,7 @@ func (counter *Counter) Put(node *corev1.Node) {
 }
 
 // PutAll adds or updates each node in the counter.
-func (counter *Counter) PutAll(nodes []*corev1.Node) {
+func (counter *NodeAggregator) PutAll(nodes []*corev1.Node) {
 	counter.lock.Lock()
 	defer counter.lock.Unlock()
 
@@ -62,27 +61,27 @@ func (counter *Counter) PutAll(nodes []*corev1.Node) {
 }
 
 // Delete removes a node from the counter.
-func (counter *Counter) Delete(node *corev1.Node) {
+func (counter *NodeAggregator) Delete(node *corev1.Node) {
 	counter.lock.Lock()
 	defer counter.lock.Unlock()
 
 	counter.deleteNoLock(node)
 }
 
-func (counter *Counter) addNoLock(node *corev1.Node) {
+func (counter *NodeAggregator) addNoLock(node *corev1.Node) {
 	if node == nil || counter.nodeIDs.Has(node.UID) {
 		return
 	}
 
 	counter.nodeIDs.Insert(node.UID)
-	counter.total.Add(alloc.FromResourceList(counter.getNodeRes(node)))
+	counter.total.Add(FromResourceList(counter.getNodeRes(node)))
 }
 
-func (counter *Counter) deleteNoLock(node *corev1.Node) {
+func (counter *NodeAggregator) deleteNoLock(node *corev1.Node) {
 	if node == nil || !counter.nodeIDs.Has(node.UID) {
 		return
 	}
 
 	counter.nodeIDs.Delete(node.UID)
-	counter.total.Sub(alloc.FromResourceList(counter.getNodeRes(node)))
+	counter.total.Sub(FromResourceList(counter.getNodeRes(node)))
 }

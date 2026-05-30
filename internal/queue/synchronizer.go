@@ -7,9 +7,8 @@ import (
 
 	schedv1 "github.com/kaschnit/kaschnit-scheduler/apis/scheduling/v1"
 	"github.com/kaschnit/kaschnit-scheduler/internal/alloc"
-	"github.com/kaschnit/kaschnit-scheduler/internal/clusterres"
 	schedinformers "github.com/kaschnit/kaschnit-scheduler/internal/generated/informers/externalversions"
-	"github.com/kaschnit/kaschnit-scheduler/internal/podutil"
+	"github.com/kaschnit/kaschnit-scheduler/internal/podstates"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -23,7 +22,7 @@ import (
 type Synchronizer struct {
 	queueMgr     *Manager
 	queueUpdater schedv1QueueUpdater
-	resTracker   *clusterres.Tracker
+	resTracker   *alloc.ClusterResourceTracker
 }
 
 // NewSynchronizer creates a new [Synchronizer].
@@ -80,7 +79,7 @@ func NewSynchronizer(
 	informerFactory.Start(ctx.Done())
 	informerFactory.WaitForCacheSync(ctx.Done())
 
-	resTracker, err := clusterres.NewTracker(ctx, informerFactory)
+	resTracker, err := alloc.NewClusterResourceTracker(ctx, informerFactory)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +244,7 @@ func (syn *Synchronizer) updatePod(oldObj, newObj any) {
 			"newObj", newObj)
 	}
 
-	if podutil.IsTerminal(oldPod.Status.Phase) || podutil.IsNonTerminal(newPod.Status.Phase) {
+	if podstates.IsTerminal(oldPod.Status.Phase) || podstates.IsNonTerminal(newPod.Status.Phase) {
 		return
 	}
 

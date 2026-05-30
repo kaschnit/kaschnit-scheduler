@@ -1,28 +1,27 @@
-package clusterres
+package alloc
 
 import (
 	"context"
 
-	"github.com/kaschnit/kaschnit-scheduler/internal/alloc"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 )
 
-// Tracker tracks the total available resources in the
+// ClusterResourceTracker tracks the total available resources in the
 // cluster by watching cluster nodes.
-type Tracker struct {
-	counter *Counter
+type ClusterResourceTracker struct {
+	counter *NodeAggregator
 }
 
-// NewTracker creates a new [Tracker].
-func NewTracker(
+// NewClusterResourceTracker creates a new [ClusterResourceTracker].
+func NewClusterResourceTracker(
 	ctx context.Context,
 	informerFactory informers.SharedInformerFactory,
-) (*Tracker, error) {
-	counter := Tracker{
-		counter: NewAllocatableCounter(),
+) (*ClusterResourceTracker, error) {
+	counter := ClusterResourceTracker{
+		counter: NewNodeAllocatableAggregator(),
 	}
 
 	nodeInformer := informerFactory.Core().V1().Nodes().Informer()
@@ -41,11 +40,11 @@ func NewTracker(
 }
 
 // GetTotal gets the total count of resources tracked in the cluster.
-func (tracker *Tracker) GetTotal() alloc.Resources {
+func (tracker *ClusterResourceTracker) GetTotal() Resources {
 	return tracker.counter.GetTotal()
 }
 
-func (tracker *Tracker) addNode(obj any) {
+func (tracker *ClusterResourceTracker) addNode(obj any) {
 	ctx := context.Background()
 	logger := klog.FromContext(ctx)
 
@@ -61,7 +60,7 @@ func (tracker *Tracker) addNode(obj any) {
 	tracker.counter.Put(node)
 }
 
-func (tracker *Tracker) updateNode(oldObj, newObj any) {
+func (tracker *ClusterResourceTracker) updateNode(oldObj, newObj any) {
 	ctx := context.Background()
 	logger := klog.FromContext(ctx)
 
@@ -122,7 +121,7 @@ func (tracker *Tracker) updateNode(oldObj, newObj any) {
 	}
 }
 
-func (tracker *Tracker) deleteNode(obj any) {
+func (tracker *ClusterResourceTracker) deleteNode(obj any) {
 	ctx := context.Background()
 	logger := klog.FromContext(ctx)
 
