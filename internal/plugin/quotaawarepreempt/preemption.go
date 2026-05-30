@@ -337,8 +337,8 @@ func (p *preemptor) SelectVictimsOnNode(
 			"used", preemptorQ.Quota().Used,
 			"max", preemptorQ.Quota().Max)
 		return nil, 0, fwk.NewStatus(fwk.Unschedulable,
-			fmt.Sprintf("Not eligible for preemption because queue exceeds after preemption (used=%+v, max=%+v)",
-				preemptorQ.Quota().Used, preemptorQ.Quota().Max))
+			fmt.Sprintf("Not eligible for preemption because queue exceeds after preemption (quota=%s)",
+				preemptorQ.Quota()))
 	}
 
 	// Sort potential victims in descending order of priority.

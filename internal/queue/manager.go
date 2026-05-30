@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/kaschnit/kaschnit-scheduler/apis/scheduling"
+	"github.com/kaschnit/kaschnit-scheduler/internal/cow"
 
 	corev1 "k8s.io/api/core/v1"
 )
@@ -20,27 +21,23 @@ var (
 
 // Manager manages queues.
 type Manager struct {
-	sync.RWMutex
-	queueByName map[string]*Queue
+	sync.Mutex
+
+	// queueByName are the queues indexed by name.
+	// We use a copy-on-write map for fast snapshotting of the quota.
+	queueByName *cow.RCMap[string, *Queue]
 }
 
 // NewManager creates a new [Manager].
 func NewManager() *Manager {
 	return &Manager{
-		queueByName: make(map[string]*Queue),
+		queueByName: cow.NewRCMap[string, *Queue](),
 	}
 }
 
 // Get gets the quota related to the pod, based on the pod's queue.
 // If the pod is nil or has no queue, returns nil.
 func (qm *Manager) Get(pod *corev1.Pod) *Queue {
-	qm.RLock()
-	defer qm.RUnlock()
-
-	return qm.get(pod)
-}
-
-func (qm *Manager) get(pod *corev1.Pod) *Queue {
 	if pod == nil {
 		return nil
 	}
@@ -51,34 +48,17 @@ func (qm *Manager) get(pod *corev1.Pod) *Queue {
 		return nil
 	}
 
-	return qm.getByName(name)
+	return qm.GetByName(name)
 }
 
 func (qm *Manager) GetByName(name string) *Queue {
-	qm.RLock()
-	defer qm.RUnlock()
-
-	return qm.getByName(name)
-}
-
-func (qm *Manager) getByName(name string) *Queue {
-	return qm.queueByName[name]
+	q, _ := qm.queueByName.Get(name)
+	return q
 }
 
 // Put creates or updates the quota for the queue.
 func (qm *Manager) Put(name string, opts ...QueueOption) {
-	qm.Lock()
-	defer qm.Unlock()
-
-	qm.put(New(name, opts...))
-}
-
-func (qm *Manager) put(q *Queue) {
-	if q == nil {
-		return
-	}
-
-	qm.queueByName[q.Name()] = q
+	qm.queueByName.Put(name, New(name, opts...))
 }
 
 // Update mutates the queue with the given name.
@@ -91,9 +71,9 @@ func (qm *Manager) Update(name string, opts ...QueueOption) {
 	qm.Lock()
 	defer qm.Unlock()
 
-	q := qm.getByName(name)
+	q := qm.GetByName(name)
 	if q == nil {
-		qm.put(New(name, opts...))
+		qm.Put(name, opts...)
 		return
 	}
 
@@ -101,26 +81,11 @@ func (qm *Manager) Update(name string, opts ...QueueOption) {
 }
 
 func (qm *Manager) Delete(name string) {
-	qm.Lock()
-	defer qm.Unlock()
-
-	qm.delete(name)
-}
-
-func (qm *Manager) delete(name string) {
-	delete(qm.queueByName, name)
+	qm.queueByName.Delete(name)
 }
 
 func (qm *Manager) QueueIter() iter.Seq[*Queue] {
-	mgrClone := qm.Clone()
-
-	return func(yield func(*Queue) bool) {
-		for _, q := range mgrClone.queueByName {
-			if !yield(q) {
-				return
-			}
-		}
-	}
+	return qm.queueByName.Values()
 }
 
 // AddPodIfNotPresent adds the pod to the quota if the pod has a quota.
@@ -142,8 +107,8 @@ func (qm *Manager) addPodIfNotPresentNoLock(pod *corev1.Pod) error {
 		return nil
 	}
 
-	q, ok := qm.queueByName[queueName]
-	if !ok {
+	q := qm.GetByName(queueName)
+	if q == nil {
 		return fmt.Errorf("%w: queue '%s' does not exist", ErrAddPodToQuota, queueName)
 	}
 
@@ -171,8 +136,8 @@ func (qm *Manager) deletePodIfPresentNoLock(pod *corev1.Pod) error {
 		return nil
 	}
 
-	q, ok := qm.queueByName[queueName]
-	if !ok {
+	q := qm.GetByName(queueName)
+	if q == nil {
 		return fmt.Errorf("%w: queue '%s' does not exist", ErrRemovePodFromQuota, queueName)
 	}
 
@@ -183,14 +148,7 @@ func (qm *Manager) deletePodIfPresentNoLock(pod *corev1.Pod) error {
 
 // Clone creates a clone of the [Manager].
 func (qm *Manager) Clone() *Manager {
-	qmClone := NewManager()
-
-	qm.RLock()
-	defer qm.RUnlock()
-
-	for name, q := range qm.queueByName {
-		qmClone.queueByName[name] = q.Clone()
+	return &Manager{
+		queueByName: qm.queueByName.Clone(),
 	}
-
-	return qmClone
 }

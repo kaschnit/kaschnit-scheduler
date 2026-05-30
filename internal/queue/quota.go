@@ -1,7 +1,9 @@
 package queue
 
 import (
+	"fmt"
 	"maps"
+	"strings"
 
 	"github.com/kaschnit/kaschnit-scheduler/internal/alloc"
 	corev1 "k8s.io/api/core/v1"
@@ -90,4 +92,30 @@ func (q *Quota) Clone() *Quota {
 	}
 
 	return newQuotaUsage
+}
+
+// String converts q to a string representation.
+func (q *Quota) String() string {
+	const maxPodSamples = 3
+	podSamples := make([]string, 0, maxPodSamples)
+	for _, pod := range q.PodsByName {
+		if len(podSamples) >= maxPodSamples {
+			break
+		}
+		if pod != nil {
+			// "namespace/name" is much more useful than a raw types.UID string
+			podSamples = append(podSamples, fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
+		}
+	}
+
+	var podsSummary string
+	if len(q.PodsByName) == 0 {
+		podsSummary = "[]"
+	} else if len(q.PodsByName) <= maxPodSamples {
+		podsSummary = fmt.Sprintf("[%s]", strings.Join(podSamples, ", "))
+	} else {
+		podsSummary = fmt.Sprintf("[%s, ... (+%d more)]", strings.Join(podSamples, ", "), len(q.PodsByName)-maxPodSamples)
+	}
+
+	return fmt.Sprintf("{Max: %s, Used: %s, Pods: %s}", q.Max, q.Used, podsSummary)
 }

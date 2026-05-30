@@ -1,6 +1,11 @@
 package alloc
 
 import (
+	"cmp"
+	"fmt"
+	"slices"
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -381,6 +386,30 @@ func (r Resources) Clone() Resources {
 		cloned[name] = qty.DeepCopy()
 	}
 	return cloned
+}
+
+// String converts r to a string representation.
+func (r Resources) String() string {
+	names := make([]ResourceName, 0, len(r))
+	for name := range r {
+		names = append(names, name)
+	}
+	slices.SortFunc(names, func(name1, name2 ResourceName) int {
+		return cmp.Compare(name1, name2)
+	})
+
+	var sb strings.Builder
+	sb.WriteString("{")
+	for i, name := range names {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		qty := r[name]
+		fmt.Fprintf(&sb, "%s: %s", name, &qty)
+	}
+	sb.WriteString("}")
+
+	return sb.String()
 }
 
 func getResNames(resources ...Resources) sets.Set[ResourceName] {

@@ -112,8 +112,8 @@ func (plugin *Plugin) PreFilter(
 	stateMgr := NewStateManager(state)
 	requestedRes := alloc.FromPodReq(pod)
 	qSnapshot := &QueueSnapshotState{QueueMgr: plugin.queueMgr.Clone()}
-	// Defer because below code modifies the snapshot's queueMgr.
-	// Writing the state clones it, so we must write after all modifications.
+	// Defer because below code may modify the snapshot's queueMgr.
+	// Ensure we wait to write the state until we have made all modifications.
 	defer stateMgr.WriteQueueSnapshot(qSnapshot)
 
 	podQ := qSnapshot.QueueMgr.Get(pod)
@@ -203,9 +203,8 @@ func (plugin *Plugin) PreFilter(
 		logger.Info("Pod does not fit in quota")
 
 		return nil, fwk.NewStatus(fwk.Unschedulable,
-			fmt.Sprintf("Not eligible for scheduling because queue %s exceeds quota "+
-				"(used=%+v, max=%+v, requsted=%+v)",
-				podQ.Name(), podQ.Quota().Used, podQ.Quota().Max, requestedRes))
+			fmt.Sprintf("Not eligible for scheduling because queue %s exceeds quota (quota=%s, requested=%s)",
+				podQ.Name(), podQ.Quota(), requestedRes))
 	}
 
 	return nil, fwk.NewStatus(fwk.Success, "")

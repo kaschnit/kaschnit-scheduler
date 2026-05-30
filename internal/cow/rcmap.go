@@ -5,10 +5,20 @@ import (
 	"sync"
 )
 
-// RCMap is a copy-on-write (COW) map.
-// The entire underlying data is copied on write when there is more
-// than 1 reference to it.
-// This data structure is thread-safe.
+// RCMap is a copy-on-write (COW) map that uses reference counting to determine when writes are needed.
+//
+// The entire underlying data is shallow-copied on write when there is more than one reference to it.
+// If there is only 1 reference, it is not copied on write.
+// Each underlying value is cloned only when needed.
+//
+// RCMap provides an interface that looks like a deep-copyable data structure,
+// but only data that needs to be deep-copied is actually deep-copied when it needs to be.
+//
+// RCMap can be used with non-pointer values, but the benefits of lazy cloning are more
+// apparent when working with pointers. Non-pointer values may have worse performance than an eager
+// deep copy would, since they're first shallow-copied on write, and again cloned on first shared read.
+//
+// All receiver methods of RCMap are thread-safe.
 type RCMap[K comparable, V Value[V]] struct {
 	// shared is the reference-counted map.
 	// This is copied on write if there's more than 1 reference.
@@ -86,7 +96,6 @@ func (rcm *RCMap[K, V]) Delete(key K) bool {
 	}
 
 	if rcm.shared.rc > 1 { // More than 1 reference; perform copy-on-write.
-
 		clonedItems := make(map[K]*lazyClone[V], len(rcm.shared.items)-1)
 		for k, v := range rcm.shared.items {
 			if k != key {
@@ -124,6 +133,29 @@ func (rcm *RCMap[K, V]) All() iter.Seq2[K, V] {
 		// will cause rc>1, so writes will cause a copy of the underlying map.
 		for k, v := range cowClone.shared.items {
 			if !yield(k, v.get()) {
+				return
+			}
+		}
+	}
+}
+
+// All returns an iterator over the values.
+// See [maps.Values].
+func (rcm *RCMap[K, V]) Values() iter.Seq[V] {
+	return func(yield func(V) bool) {
+		// Iterate a clone.
+		// Clone is cheap because of copy-on-write.
+		// Only create the clone inside the closure so it's not cloned unless
+		// the iterator is actually used.
+		cowClone := rcm.Clone()
+
+		// Ensure we remove the reference when cowClone is unused.
+		defer cowClone.Clear()
+
+		// Safe to do without lock, because any other reference to the underlying map
+		// will cause rc>1, so writes will cause a copy of the underlying map.
+		for _, v := range cowClone.shared.items {
+			if !yield(v.get()) {
 				return
 			}
 		}
