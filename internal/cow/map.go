@@ -19,6 +19,8 @@ import (
 // deep copy would, since they're first shallow-copied on write, and again cloned on first shared read.
 //
 // All receiver methods of Map are thread-safe.
+//
+// TODO: extract reference-counted operations from Map into sharedMap, similar to sharedValue.
 type Map[K comparable, V Value[V]] struct {
 	// shared is the shared counted map.
 	// This is copied on write if there's more than 1 reference.
@@ -163,6 +165,7 @@ func (rcm *Map[K, V]) Values() iter.Seq[V] {
 }
 
 // RefCount returns the number of references to the underlying data.
+// TODO: Add RefCount for specific key? Might be nice to have in testing.
 func (rcm *Map[K, V]) RefCount() int64 {
 	rcm.lock.RLock()
 	defer rcm.lock.RUnlock()
