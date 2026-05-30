@@ -25,13 +25,13 @@ type Manager struct {
 
 	// queueByName are the queues indexed by name.
 	// We use a copy-on-write map for fast snapshotting of the quota.
-	queueByName *cow.RCMap[string, *Queue]
+	queueByName *cow.Map[string, *Queue]
 }
 
 // NewManager creates a new [Manager].
 func NewManager() *Manager {
 	return &Manager{
-		queueByName: cow.NewRCMap[string, *Queue](),
+		queueByName: cow.NewMap[string, *Queue](),
 	}
 }
 

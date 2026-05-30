@@ -26,9 +26,9 @@ func (td *testData) Clone() *testData {
 	}
 }
 
-func TestRCMapBasicLogic(t *testing.T) {
+func TestMapBasicLogic(t *testing.T) {
 	t.Run("basic crud operations on single generation", func(t *testing.T) {
-		rcm := cow.NewRCMap[string, *testData]()
+		rcm := cow.NewMap[string, *testData]()
 
 		// Get on empty map
 		val, found := rcm.Get("non-existent")
@@ -56,7 +56,7 @@ func TestRCMapBasicLogic(t *testing.T) {
 		assert.False(t, rcm.Delete("key1"))
 	})
 	t.Run("lazy evaluation boundary on read", func(t *testing.T) {
-		rcm1 := cow.NewRCMap[string, *testData]()
+		rcm1 := cow.NewMap[string, *testData]()
 		rcm1.Put("k1", &testData{a: 10, b: "init"})
 
 		// Read from rcm1. We initially put k1 in rcm1, so it never gets cloned when reading rcm1.
@@ -68,20 +68,20 @@ func TestRCMapBasicLogic(t *testing.T) {
 		// Write to rcm2 to force copy-on-write, but no deep clone of k1 yet.
 		rcm2.Put("k2", &testData{a: 20, b: "unrelated"})
 
-		// Read again from rcm1. We initially put k1 in rcm1, so it never gets cloned when reading rcm1.
+		// Read again from rcm1. There are now 2 references to k1, so it gets cloned.
 		rcm1K1Val, _ = rcm1.Get("k1")
-		assert.Equal(t, 0, rcm1K1Val.cloneCount)
+		assert.Equal(t, 1, rcm1K1Val.cloneCount)
 
-		// Read from rcm2. It should perform its own independent clone from its current root reference point
+		// Read from rcm2. It should not clone since there is only 1 reference.
 		rcm2K1Val, _ := rcm2.Get("k1")
-		assert.Equal(t, 1, rcm2K1Val.cloneCount) // It clones the original, so count goes 0 -> 1
+		assert.Equal(t, 0, rcm2K1Val.cloneCount)
 
 		// Ensure memory spaces are isolated
 		rcm1K1Val.a = 999
 		assert.Equal(t, 10, rcm2K1Val.a, "Mutating data in generation 1 should not affect generation 2")
 	})
 	t.Run("clear breaks reference tracking properly", func(t *testing.T) {
-		rcm1 := cow.NewRCMap[string, *testData]()
+		rcm1 := cow.NewMap[string, *testData]()
 		rcm1.Put("k1", &testData{a: 1})
 
 		rcm2 := rcm1.Clone()
@@ -102,7 +102,7 @@ func TestRCMapBasicLogic(t *testing.T) {
 		assert.Equal(t, 1, v2.a)
 	})
 	t.Run("iterator sequence validation and early loop termination", func(t *testing.T) {
-		rcm := cow.NewRCMap[string, *testData]()
+		rcm := cow.NewMap[string, *testData]()
 		rcm.Put("A", &testData{a: 1})
 		rcm.Put("B", &testData{a: 2})
 		rcm.Put("C", &testData{a: 3})
@@ -126,7 +126,7 @@ func TestRCMapBasicLogic(t *testing.T) {
 		assert.Equal(t, int64(1), rcm.RefCount(), "Ref count must be freed even if loop breaks early")
 	})
 	t.Run("clone and delete value", func(t *testing.T) {
-		rcm1 := cow.NewRCMap[string, *testData]()
+		rcm1 := cow.NewMap[string, *testData]()
 		rcm1.Put("empty", &testData{})
 		rcm1.Put("value", &testData{
 			a: 1,
@@ -146,23 +146,25 @@ func TestRCMapBasicLogic(t *testing.T) {
 		assert.Equal(t, int64(1), rcm2.RefCount())
 
 		map1 := rcm1.ToMap()
-		assert.Equal(t, map1, map[string]*testData{
-			"empty": {},
+		assert.Equal(t, map[string]*testData{
+			"empty": {
+				cloneCount: 1, // Was cloned when reading due to multiple refs
+			},
 			"value": {
 				a: 1,
 				b: "hello",
 			},
-		})
+		}, map1)
 
 		map2 := rcm2.ToMap()
-		assert.Equal(t, map2, map[string]*testData{
+		assert.Equal(t, map[string]*testData{
 			"empty": {
-				cloneCount: 1, // Was cloned when reading
+				cloneCount: 0, // Was not cloned when reading, other ref was cloned.
 			},
-		})
+		}, map2)
 	})
 	t.Run("nested deep-cloning generations lineage", func(t *testing.T) {
-		rcm1 := cow.NewRCMap[string, *testData]()
+		rcm1 := cow.NewMap[string, *testData]()
 		rcm1.Put("quota", &testData{a: 100}) // Generation 0 (cloned: true)
 
 		rcm2 := rcm1.Clone()               // RefCount = 2
@@ -184,7 +186,7 @@ func TestRCMapBasicLogic(t *testing.T) {
 		assert.Equal(t, 0, v1.cloneCount)
 	})
 	t.Run("iterator mutation isolation during execution", func(t *testing.T) {
-		rcm := cow.NewRCMap[string, *testData]()
+		rcm := cow.NewMap[string, *testData]()
 		rcm.Put("k1", &testData{a: 1})
 		rcm.Put("k2", &testData{a: 2})
 
@@ -208,7 +210,7 @@ func TestRCMapBasicLogic(t *testing.T) {
 		}
 	})
 	t.Run("resurrected key structural isolation", func(t *testing.T) {
-		rcm1 := cow.NewRCMap[string, *testData]()
+		rcm1 := cow.NewMap[string, *testData]()
 		rcm1.Put("quota-X", &testData{a: 100, b: "v1"})
 
 		rcm2 := rcm1.Clone()
@@ -233,7 +235,7 @@ func TestRCMapBasicLogic(t *testing.T) {
 	t.Run("mid-flight iterator snapshotting race", func(t *testing.T) {
 		t.Parallel()
 
-		rcm := cow.NewRCMap[string, *testData]()
+		rcm := cow.NewMap[string, *testData]()
 		for i := range 100 {
 			rcm.Put(fmt.Sprintf("k-%d", i), &testData{a: i})
 		}
@@ -270,14 +272,14 @@ func TestRCMapBasicLogic(t *testing.T) {
 	})
 }
 
-func TestRCMapKitchenSink(t *testing.T) {
+func TestMapKitchenSink(t *testing.T) {
 	t.Run("complex lineage generational mutations and isolation", func(t *testing.T) {
 		// We will maintain an array of snapshots to track historical states
 		const generations = 20
-		snapshots := make([]*cow.RCMap[string, *testData], generations)
+		snapshots := make([]*cow.Map[string, *testData], generations)
 
 		// Create the root map (Generation 0)
-		rcm := cow.NewRCMap[string, *testData]()
+		rcm := cow.NewMap[string, *testData]()
 		snapshots[0] = rcm
 
 		// Seed the root map with core tracking keys
@@ -319,19 +321,17 @@ func TestRCMapKitchenSink(t *testing.T) {
 		vMin, _ := snapshots[0].Get("global-limit")
 		assert.Equal(t, 1000, vMin.a)
 		assert.Equal(t, "root", vMin.b)
-		assert.Equal(t, 0, vMin.cloneCount, "Gen 0 should never have been cloned on read")
+		assert.Equal(t, 1, vMin.cloneCount, "Root should have been cloned on read")
 
 		// Assert downstream generation values are structurally sound
-		for i := 1; i < generations; i++ {
+		for i := 1; i < generations-1; i++ {
 			vLimit, found := snapshots[i].Get("global-limit")
 			assert.True(t, found)
 			assert.Equal(t, 1000+i, vLimit.a)
 			assert.Equal(t, fmt.Sprintf("gen-%d", i), vLimit.b)
 
-			// Because snapshots[i] was created via Clone and then modified via Put,
-			// the "global-limit" key was explicitly overwritten via Put(newDirectLazyClone).
-			// Therefore, reading it should trigger 0 lazy clones!
-			assert.Equal(t, 0, vLimit.cloneCount)
+			// There are many references to the same data, so should have a clone when read.
+			assert.Equal(t, 1, vLimit.cloneCount)
 
 			// Validate ephemeral isolation boundaries
 			_, currentEphemeralFound := snapshots[i].Get(fmt.Sprintf("ephemeral-%d", i))
@@ -364,7 +364,7 @@ func TestRCMapKitchenSink(t *testing.T) {
 		// Read it from Generation 0. It must still be the original un-cloned root data.
 		vRoot, _ := snapshots[0].Get("user-quota-B")
 		assert.Equal(t, 100, vRoot.a)
-		assert.Equal(t, 0, vRoot.cloneCount)
+		assert.Equal(t, 1, vRoot.cloneCount)
 
 		// 4. Cleanup Phase:
 		// Clear out generations one by one and ensure reference counts balance perfectly back to 0.
@@ -375,18 +375,18 @@ func TestRCMapKitchenSink(t *testing.T) {
 	})
 }
 
-func TestRCMapConcurrency(t *testing.T) {
+func TestMapConcurrency(t *testing.T) {
 	t.Run("concurrent read-read contention on shared un-cloned wrappers", func(t *testing.T) {
 		t.Parallel()
 
 		// Scenario: Dozens of workers read from different snapshot handles that
 		// share the exact same un-cloned lazyClone pointer. This fiercely stress-tests
 		// lazyClone.lock serialization when cloned == false.
-		rcmRoot := cow.NewRCMap[string, *testData]()
+		rcmRoot := cow.NewMap[string, *testData]()
 		rcmRoot.Put("quota-key", &testData{a: 5000})
 
 		const workerCount = 50
-		clones := make([]*cow.RCMap[string, *testData], workerCount)
+		clones := make([]*cow.Map[string, *testData], workerCount)
 		for i := range workerCount {
 			clones[i] = rcmRoot.Clone()
 		}
@@ -422,7 +422,7 @@ func TestRCMapConcurrency(t *testing.T) {
 		// Scenario: A heavy master writer constantly triggers COW forks via Put/Delete
 		// on one handle, while multiple background readers aggressively call Get()
 		// on a separate snapshot generation handle.
-		rcmActive := cow.NewRCMap[string, *testData]()
+		rcmActive := cow.NewMap[string, *testData]()
 		for i := range 100 {
 			rcmActive.Put(fmt.Sprintf("key-%d", i), &testData{a: i})
 		}
@@ -473,7 +473,7 @@ func TestRCMapConcurrency(t *testing.T) {
 		// Scenario: Multiple goroutines continuously spin up All() iterators,
 		// partly exhaust them, and break early. This verifies rcm.shared.rc reference
 		// incrementing/decrementing remains perfectly bounded without race leaks.
-		rcm := cow.NewRCMap[string, *testData]()
+		rcm := cow.NewMap[string, *testData]()
 		for i := range 50 {
 			rcm.Put(fmt.Sprintf("k-%d", i), &testData{a: i})
 		}
@@ -503,7 +503,7 @@ func TestRCMapConcurrency(t *testing.T) {
 
 		// Scenario: A chaotic combination of every map operation executing concurrently
 		// on the same base pointer instance to check general structural thread-safety.
-		rcm := cow.NewRCMap[string, *testData]()
+		rcm := cow.NewMap[string, *testData]()
 
 		var wg sync.WaitGroup
 		const operationsPerWorker = 500
@@ -544,10 +544,10 @@ func TestRCMapConcurrency(t *testing.T) {
 		)
 
 		// An array holding active historical snapshot generations as they are created
-		var generations sync.Map // Map[int]*cow.RCMap[string, *testData]
+		var generations sync.Map // Map[int]*cow.Map[string, *testData]
 
 		// Seed the root map (Gen 0)
-		rcmRoot := cow.NewRCMap[string, *testData]()
+		rcmRoot := cow.NewMap[string, *testData]()
 		rcmRoot.Put("global-limit", &testData{a: 1000, b: "gen-0"})
 		rcmRoot.Put("shared-quota", &testData{a: 500, b: "gen-0"})
 		generations.Store(0, rcmRoot)
@@ -615,7 +615,7 @@ func TestRCMapConcurrency(t *testing.T) {
 					if !ok {
 						continue
 					}
-					targetMap := genVal.(*cow.RCMap[string, *testData])
+					targetMap := genVal.(*cow.Map[string, *testData])
 
 					// Action A: Read the heavily overwritten key
 					limit, found := targetMap.Get("global-limit")
@@ -650,7 +650,7 @@ func TestRCMapConcurrency(t *testing.T) {
 		// Clean up handles completely and assert reference counts drop safely back to 1.
 		for i := 0; i < maxGenerations; i++ {
 			if val, ok := generations.Load(i); ok {
-				m := val.(*cow.RCMap[string, *testData])
+				m := val.(*cow.Map[string, *testData])
 				m.Clear()
 				assert.Equal(t, int64(1), m.RefCount(), "Generation %d leaked reference tracking counts", i)
 			}

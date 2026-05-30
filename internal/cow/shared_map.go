@@ -1,24 +1,18 @@
 package cow
 
-import "sync"
-
 // sharedMap is a reference-counted map.
+// TODO: extract reference-counted operations from Map into sharedMap, similar to sharedValue.
 type sharedMap[K comparable, V Value[V]] struct {
 	// items is the underlying map.
-	items map[K]*lazyClone[V]
+	items map[K]*sharedValue[V]
 	// rc is the reference count.
-	rc int64
-	// lock synchronizes access to rc.
-	// It does not need to synchronize access to items, since items should
-	// be read-only if there is more than 1 reference to it; and creation
-	// of new references are externally synchronized (by [Map.lock]).
-	lock sync.Mutex
+	*refCounter
 }
 
 // newSharedMap creates a new [sharedMap].
-func newSharedMap[K comparable, V Value[V]](items map[K]*lazyClone[V]) *sharedMap[K, V] {
+func newSharedMap[K comparable, V Value[V]](items map[K]*sharedValue[V]) *sharedMap[K, V] {
 	return &sharedMap[K, V]{
-		items: items,
-		rc:    1,
+		items:      items,
+		refCounter: newRefCounter(),
 	}
 }
