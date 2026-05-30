@@ -25,55 +25,55 @@ func TestCounter(t *testing.T) {
 
 	t.Run("construct with nodes", func(t *testing.T) {
 		counter1 := clusterres.NewAllocatableCounter(node1)
-		assert.Equal(t, &framework.Resource{
+		assert.Equal(t, framework.Resource{
 			MilliCPU: 4000,
 			Memory:   16384,
-		}, counter1.GetTotal())
+		}, *counter1.GetTotal().ToFrameworkResource())
 
 		counter2 := clusterres.NewAllocatableCounter(node2)
-		assert.Equal(t, &framework.Resource{
+		assert.Equal(t, framework.Resource{
 			MilliCPU: 8000,
 			Memory:   32768,
 			ScalarResources: map[corev1.ResourceName]int64{
 				"nvidia.com/gpu": 2,
 			},
-		}, counter2.GetTotal())
+		}, *counter2.GetTotal().ToFrameworkResource())
 
 		counter3 := clusterres.NewAllocatableCounter(node1, node2)
-		assert.Equal(t, &framework.Resource{
+		assert.Equal(t, framework.Resource{
 			MilliCPU: 12000,
 			Memory:   49152,
 			ScalarResources: map[corev1.ResourceName]int64{
 				"nvidia.com/gpu": 2,
 			},
-		}, counter3.GetTotal())
+		}, *counter3.GetTotal().ToFrameworkResource())
 	})
 
 	t.Run("basic lifecycle", func(t *testing.T) {
 		counter := clusterres.NewAllocatableCounter()
 
 		t.Run("starts in empty state", func(t *testing.T) {
-			assert.Equal(t, &framework.Resource{}, counter.GetTotal())
+			assert.Equal(t, framework.Resource{}, *counter.GetTotal().ToFrameworkResource())
 		})
 
 		t.Run("deletefrom empty state does nothing", func(t *testing.T) {
 			counter.Delete(node1)
-			assert.Equal(t, &framework.Resource{}, counter.GetTotal())
+			assert.Equal(t, framework.Resource{}, *counter.GetTotal().ToFrameworkResource())
 
 			counter.Delete(node2)
-			assert.Equal(t, &framework.Resource{}, counter.GetTotal())
+			assert.Equal(t, framework.Resource{}, *counter.GetTotal().ToFrameworkResource())
 		})
 
 		t.Run("add to counter", func(t *testing.T) {
 			counter.Put(node1)
-			assert.Equal(t, &framework.Resource{
+			assert.Equal(t, framework.Resource{
 				MilliCPU: 4000,
 				Memory:   16384,
-			}, counter.GetTotal())
+			}, *counter.GetTotal().ToFrameworkResource())
 		})
 
 		t.Run("add to counter with idempotency", func(t *testing.T) {
-			expected := &framework.Resource{
+			expected := framework.Resource{
 				MilliCPU: 12000,
 				Memory:   49152,
 				ScalarResources: map[corev1.ResourceName]int64{
@@ -82,21 +82,21 @@ func TestCounter(t *testing.T) {
 			}
 
 			counter.PutAll([]*corev1.Node{node1, node2})
-			assert.Equal(t, expected, counter.GetTotal())
+			assert.Equal(t, expected, *counter.GetTotal().ToFrameworkResource())
 
 			counter.Put(node2)
-			assert.Equal(t, expected, counter.GetTotal())
+			assert.Equal(t, expected, *counter.GetTotal().ToFrameworkResource())
 		})
 
 		t.Run("remove from counter", func(t *testing.T) {
 			counter.Delete(node1)
-			assert.Equal(t, &framework.Resource{
+			assert.Equal(t, framework.Resource{
 				MilliCPU: 8000,
 				Memory:   32768,
 				ScalarResources: map[corev1.ResourceName]int64{
 					"nvidia.com/gpu": 2,
 				},
-			}, counter.GetTotal())
+			}, *counter.GetTotal().ToFrameworkResource())
 		})
 	})
 }

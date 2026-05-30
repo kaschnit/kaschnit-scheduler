@@ -3,11 +3,11 @@ package clusterres
 import (
 	"context"
 
+	"github.com/kaschnit/kaschnit-scheduler/internal/alloc"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
 // Tracker tracks the total available resources in the
@@ -41,7 +41,7 @@ func NewTracker(
 }
 
 // GetTotal gets the total count of resources tracked in the cluster.
-func (tracker *Tracker) GetTotal() *framework.Resource {
+func (tracker *Tracker) GetTotal() alloc.Resources {
 	return tracker.counter.GetTotal()
 }
 

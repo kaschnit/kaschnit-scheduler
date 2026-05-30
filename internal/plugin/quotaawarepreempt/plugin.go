@@ -7,11 +7,11 @@ import (
 
 	configv1 "github.com/kaschnit/kaschnit-scheduler/apis/config/v1"
 	schedv1 "github.com/kaschnit/kaschnit-scheduler/apis/scheduling/v1"
+	"github.com/kaschnit/kaschnit-scheduler/internal/alloc"
 	"github.com/kaschnit/kaschnit-scheduler/internal/fwkutil"
 	schedclients "github.com/kaschnit/kaschnit-scheduler/internal/generated/clients/scheduling"
 	schedinformers "github.com/kaschnit/kaschnit-scheduler/internal/generated/informers/externalversions"
 	"github.com/kaschnit/kaschnit-scheduler/internal/queue"
-	"github.com/kaschnit/kaschnit-scheduler/internal/resconv"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
@@ -110,7 +110,7 @@ func (plugin *Plugin) PreFilter(
 	logger.Info("Running PreFilter")
 
 	stateMgr := NewStateManager(state)
-	requestedRes := resconv.FromPod(pod)
+	requestedRes := alloc.FromPodReq(pod)
 	qSnapshot := &QueueSnapshotState{QueueMgr: plugin.queueMgr.Clone()}
 	// Defer because below code modifies the snapshot's queueMgr.
 	// Writing the state clones it, so we must write after all modifications.

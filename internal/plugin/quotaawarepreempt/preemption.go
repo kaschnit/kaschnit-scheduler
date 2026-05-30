@@ -8,10 +8,10 @@ import (
 
 	configv1 "github.com/kaschnit/kaschnit-scheduler/apis/config/v1"
 	"github.com/kaschnit/kaschnit-scheduler/apis/scheduling"
+	"github.com/kaschnit/kaschnit-scheduler/internal/alloc"
 	"github.com/kaschnit/kaschnit-scheduler/internal/boolstr"
 	"github.com/kaschnit/kaschnit-scheduler/internal/labelutil"
 	"github.com/kaschnit/kaschnit-scheduler/internal/pdbutil"
-	"github.com/kaschnit/kaschnit-scheduler/internal/resconv"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
@@ -129,7 +129,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 		return false, "Unable to find info of nominated node."
 	}
 
-	requestedRes := resconv.FromPod(pod)
+	requestedRes := alloc.FromPodReq(pod)
 
 	// At this point, we have a pod that has a still-valid node nomination.
 	// This means it has already selected victims on the nominated node.
@@ -230,7 +230,7 @@ func (p *preemptor) SelectVictimsOnNode(
 	// when calling simulated PreFilter/Filter/etc.
 	stateMgr := NewStateManager(state)
 
-	requestedRes := resconv.FromPod(pod)
+	requestedRes := alloc.FromPodReq(pod)
 
 	queueSnapshot, err := stateMgr.ReadQueueSnapshot()
 	if err != nil {

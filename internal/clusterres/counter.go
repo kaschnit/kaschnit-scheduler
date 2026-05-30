@@ -3,17 +3,16 @@ package clusterres
 import (
 	"sync"
 
-	"github.com/kaschnit/kaschnit-scheduler/internal/resmath"
+	"github.com/kaschnit/kaschnit-scheduler/internal/alloc"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
 // Counter counts resources belonging to nodes.
 type Counter struct {
 	nodeIDs    sets.Set[types.UID]
-	total      *framework.Resource
+	total      alloc.Resources
 	lock       sync.RWMutex
 	getNodeRes func(*corev1.Node) corev1.ResourceList
 }
@@ -23,7 +22,7 @@ type Counter struct {
 func NewAllocatableCounter(nodes ...*corev1.Node) *Counter {
 	counter := &Counter{
 		nodeIDs: sets.New[types.UID](),
-		total:   framework.NewResource(nil),
+		total:   make(alloc.Resources),
 		getNodeRes: func(node *corev1.Node) corev1.ResourceList {
 			return node.Status.Allocatable
 		},
@@ -35,7 +34,7 @@ func NewAllocatableCounter(nodes ...*corev1.Node) *Counter {
 }
 
 // GetTotal gets the total count of resources counted.
-func (counter *Counter) GetTotal() *framework.Resource {
+func (counter *Counter) GetTotal() alloc.Resources {
 	counter.lock.RLock()
 	defer counter.lock.RUnlock()
 
@@ -76,7 +75,7 @@ func (counter *Counter) addNoLock(node *corev1.Node) {
 	}
 
 	counter.nodeIDs.Insert(node.UID)
-	resmath.AddInPlace(counter.total, framework.NewResource(counter.getNodeRes(node)))
+	counter.total.Add(alloc.FromResourceList(counter.getNodeRes(node)))
 }
 
 func (counter *Counter) deleteNoLock(node *corev1.Node) {
@@ -85,5 +84,5 @@ func (counter *Counter) deleteNoLock(node *corev1.Node) {
 	}
 
 	counter.nodeIDs.Delete(node.UID)
-	resmath.SubtractInPlace(counter.total, framework.NewResource(counter.getNodeRes(node)))
+	counter.total.Sub(alloc.FromResourceList(counter.getNodeRes(node)))
 }

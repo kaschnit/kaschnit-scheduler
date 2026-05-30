@@ -6,11 +6,10 @@ import (
 	"time"
 
 	schedv1 "github.com/kaschnit/kaschnit-scheduler/apis/scheduling/v1"
+	"github.com/kaschnit/kaschnit-scheduler/internal/alloc"
 	"github.com/kaschnit/kaschnit-scheduler/internal/clusterres"
 	schedinformers "github.com/kaschnit/kaschnit-scheduler/internal/generated/informers/externalversions"
 	"github.com/kaschnit/kaschnit-scheduler/internal/podutil"
-	"github.com/kaschnit/kaschnit-scheduler/internal/resconv"
-	"github.com/kaschnit/kaschnit-scheduler/internal/resmath"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -104,13 +103,11 @@ func (syn *Synchronizer) statusUpdateLoop(ctx context.Context) {
 			clusterTotalRes := syn.resTracker.GetTotal()
 
 			for q := range syn.queueMgr.QueueIter() {
-				effectiveMaxQuota := resmath.TakeEffectiveMax(q.Quota().Max, clusterTotalRes)
-
 				statusPatch := schedv1.Queue{
 					Status: schedv1.QueueStatus{
 						Quota: schedv1.QueueQuotaStatus{
-							EffectiveMax: resconv.ToResourceList(effectiveMaxQuota),
-							Used:         resconv.ToResourceList(q.Quota().Used),
+							EffectiveMax: clusterTotalRes.TakeMinExisting(q.Quota().Max).ToResourceList(),
+							Used:         q.Quota().Used.ToResourceList(),
 						},
 					},
 				}
@@ -161,7 +158,7 @@ func (syn *Synchronizer) addQueue(obj any) {
 	}
 
 	syn.queueMgr.Put(queueObj.Name,
-		WithQuotaMax(queueObj.Spec.Quota.Max),
+		WithQuotaMax(alloc.FromResourceList(queueObj.Spec.Quota.Max)),
 		WithLabels(labels.Set(queueObj.Labels)),
 		WithVictimSelector(victimQSelector))
 }
@@ -195,7 +192,7 @@ func (syn *Synchronizer) updateQueue(oldObj, newObj any) {
 	}
 
 	syn.queueMgr.Update(newQueue.Name,
-		WithQuotaMax(newQueue.Spec.Quota.Max),
+		WithQuotaMax(alloc.FromResourceList(newQueue.Spec.Quota.Max)),
 		WithLabels(labels.Set(newQueue.Labels)),
 		WithVictimSelector(victimQSelector))
 }

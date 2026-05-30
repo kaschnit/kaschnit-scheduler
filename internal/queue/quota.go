@@ -2,55 +2,29 @@ package queue
 
 import (
 	"maps"
-	"math"
 
-	"github.com/kaschnit/kaschnit-scheduler/internal/resconv"
-	"github.com/kaschnit/kaschnit-scheduler/internal/resmath"
+	"github.com/kaschnit/kaschnit-scheduler/internal/alloc"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
 // Quota tracks the max and available quota.
 type Quota struct {
 	// Max is the available resources.
-	Max *framework.Resource
+	Max alloc.Resources
 	// Used is the used resources.
-	Used *framework.Resource
+	Used alloc.Resources
 	// PodsByName are pods that currently contribute to quota.
 	PodsByName map[types.UID]*corev1.Pod
 }
 
 // NewQuota creates a new [Quota].
-func NewQuota(max corev1.ResourceList) *Quota {
-	quota := &Quota{
-		Used:       framework.NewResource(nil),
+func NewQuota(max alloc.Resources) *Quota {
+	return &Quota{
+		Max:        max,
+		Used:       make(alloc.Resources),
 		PodsByName: make(map[types.UID]*corev1.Pod),
 	}
-
-	quota.SetMax(max)
-
-	return quota
-}
-
-// SetMax sets the quota's max.
-func (q *Quota) SetMax(max corev1.ResourceList) {
-	if max == nil {
-		max = corev1.ResourceList{}
-	}
-
-	// By default, we set "unlimited" quota for max.
-	// In [framework.NewResource], unset results in effectively 0 which is not what we want.
-	// So we explicitly set all of the vanilla resource types to unlimited if not explicitly set.
-	// We can get away without setting "scalar" resources (i.e. extended resources) because those
-	// are differentiable based on presence.
-	resmath.SetDefault(max, corev1.ResourceCPU, resource.NewMilliQuantity(math.MaxInt64, resource.DecimalSI))
-	resmath.SetDefault(max, corev1.ResourceMemory, resource.NewQuantity(math.MaxInt64, resource.BinarySI))
-	resmath.SetDefault(max, corev1.ResourceEphemeralStorage, resource.NewQuantity(math.MaxInt64, resource.BinarySI))
-	resmath.SetDefault(max, corev1.ResourcePods, resource.NewQuantity(math.MaxInt64, resource.BinarySI))
-
-	q.Max = framework.NewResource(max)
 }
 
 // AddPodIfNotPresent adds the pod to the quota if it's not part of the quota.
@@ -64,7 +38,7 @@ func (q *Quota) AddPodIfNotPresent(pod *corev1.Pod) {
 	q.PodsByName[pod.UID] = pod
 
 	if !wasTrackingPod {
-		resmath.AddInPlace(q.Used, resconv.FromPod(pod))
+		q.Used.Add(alloc.FromPodReq(pod))
 	}
 }
 
@@ -76,7 +50,7 @@ func (q *Quota) DeletePodIfPresent(pod *corev1.Pod) {
 
 	if _, wasTrackingPod := q.PodsByName[pod.UID]; wasTrackingPod {
 		delete(q.PodsByName, pod.UID)
-		resmath.SubtractInPlace(q.Used, resconv.FromPod(pod))
+		q.Used.Sub(alloc.FromPodReq(pod))
 	}
 }
 
@@ -98,8 +72,8 @@ func (q *Quota) ContainsPod(pod *corev1.Pod) bool {
 
 // WouldPutOverMax returns true if request would put the quota over its max
 // when added to the used amount.
-func (q *Quota) WouldPutOverMax(request *framework.Resource) bool {
-	return resmath.AnyGreaterThanOnlyExisting(resmath.Add(q.Used, request), q.Max)
+func (q *Quota) WouldPutOverMax(request alloc.Resources) bool {
+	return q.Used.Plus(request).AnyGreaterIntersecting(q.Max)
 }
 
 // Clone clones the [Quota].

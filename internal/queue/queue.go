@@ -1,8 +1,8 @@
 package queue
 
 import (
+	"github.com/kaschnit/kaschnit-scheduler/internal/alloc"
 	"github.com/kaschnit/kaschnit-scheduler/internal/labelutil"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 )
 
@@ -89,9 +89,9 @@ func (q *Queue) Clone() *Queue {
 type QueueOption func(*Queue)
 
 // WithQuotaMax configures the max quota of the queue.
-func WithQuotaMax(max corev1.ResourceList) QueueOption {
+func WithQuotaMax(max alloc.Resources) QueueOption {
 	return func(q *Queue) {
-		q.quota.SetMax(max)
+		q.quota.Max = max
 	}
 }
 
