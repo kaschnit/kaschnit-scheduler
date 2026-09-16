@@ -78,9 +78,10 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 		return false, "Not eligible to preempt due to failed to read queue snapshot from cycleState."
 	}
 
+	preemptEvaluator := queue.NewPreemptionEvaluator(queueSnapshot.QueueMgr, pod)
+
 	// Pod is not eligible to preempt if its queue config says it can't preempt.
-	preemptorQ := queueSnapshot.QueueMgr.Get(pod)
-	if !preemptorQ.CanPodPreemptOthers(pod) {
+	if !preemptEvaluator.CanPodPreemptOthers() {
 		return false, "Not eligible to preempt due to queue's preemption config not allowing preemption."
 	}
 
@@ -122,6 +123,7 @@ func (p *preemptor) PodEligibleToPreemptOthers(
 	// We don't want to perform victim selection if we don't have to because it's expensive.
 	requestedRes := alloc.FromPodReq(pod)
 	preemptorPriority := corev1helpers.PodPriority(pod)
+	preemptorQ := queueSnapshot.QueueMgr.Get(pod)
 	if preemptorQ != nil { // Quota-aware preemption path
 		wouldBeOverQuota := preemptorQ.Quota().WouldPutOverMax(requestedRes)
 
@@ -241,10 +243,8 @@ func (p *preemptor) SelectVictimsOnNode(
 		return nil
 	}
 
-	preemptorQ := queueSnapshot.QueueMgr.Get(pod)
-
 	logger.Info("Looking for potential preemption victim on node")
-	potentialVictims := findPotentialVictims(pod, preemptorQ, queueSnapshot, nodeInfo)
+	potentialVictims := findPotentialVictims(pod, queueSnapshot, nodeInfo)
 
 	if len(potentialVictims) == 0 {
 		// No potential victims are found, so we don't need to evaluate the node again since its state didn't change.
@@ -270,6 +270,7 @@ func (p *preemptor) SelectVictimsOnNode(
 		return nil, 0, status
 	}
 
+	preemptorQ := queueSnapshot.QueueMgr.Get(pod)
 	requestedRes := alloc.FromPodReq(pod)
 	if preemptorQ != nil && preemptorQ.Quota().WouldPutOverMax(requestedRes) {
 		// If there's a quota and it's exceeded even after removing all potential victims,
@@ -388,27 +389,15 @@ func (p *preemptor) SelectVictimsOnNode(
 // arguments are expected to be non-nil.
 func findPotentialVictims(
 	preemptorPod *corev1.Pod,
-	preemptorQ *queue.Queue,
 	queueSnapshot *QueueSnapshotState,
 	nodeInfo fwk.NodeInfo,
 ) []fwk.PodInfo {
-	preemptorPrio := corev1helpers.PodPriority(preemptorPod)
-
 	var potentialVictims []fwk.PodInfo
-	if preemptorQ != nil { // Quota-aware preemption path
+
+	preemptEvaluator := queue.NewPreemptionEvaluator(queueSnapshot.QueueMgr, preemptorPod)
+	if preemptEvaluator.IsConfiguredForPreemption() { // Quota-aware preemption path
 		for _, victimInfo := range nodeInfo.GetPods() {
-			victimQ := queueSnapshot.QueueMgr.Get(victimInfo.GetPod())
-			if victimQ == nil {
-				// Not a victim if it has no queue/quota specified.
-				continue
-			}
-
-			if corev1helpers.PodPriority(victimInfo.GetPod()) >= preemptorPrio {
-				// Not a victim if it's same or higher priority than the preemptor.
-				continue
-			}
-
-			if !queue.IsPreemptionAllowed(preemptorQ, preemptorPod, victimQ, victimInfo.GetPod()) {
+			if !preemptEvaluator.IsPreemptionAllowed(victimInfo.GetPod()) {
 				// Not a victim if preemptor cannot preempt it.
 				continue
 			}
@@ -416,6 +405,7 @@ func findPotentialVictims(
 			potentialVictims = append(potentialVictims, victimInfo)
 		}
 	} else { // Vanilla preemption path
+		preemptorPrio := corev1helpers.PodPriority(preemptorPod)
 		for _, victimInfo := range nodeInfo.GetPods() {
 			if victimQ := queueSnapshot.QueueMgr.Get(victimInfo.GetPod()); victimQ != nil {
 				// Not a victim for vanilla preemption path if it has a quota.
