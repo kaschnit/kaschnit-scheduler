@@ -3,12 +3,11 @@ package pods
 import (
 	schedulingapi "github.com/kaschnit/kaschnit-scheduler/apis/scheduling"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func New(name string, opts ...Option) *corev1.Pod {
 	p := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Name: name,
 	}
 
 	for _, opt := range opts {

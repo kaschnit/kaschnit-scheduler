@@ -10,7 +10,6 @@ import (
 	schedclients "github.com/kaschnit/kaschnit-scheduler/client/clientset/scheduling"
 	schedinformers "github.com/kaschnit/kaschnit-scheduler/client/informers/externalversions"
 	"github.com/kaschnit/kaschnit-scheduler/internal/alloc"
-	"github.com/kaschnit/kaschnit-scheduler/internal/kubesched"
 	"github.com/kaschnit/kaschnit-scheduler/internal/queue"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -58,11 +57,13 @@ type Plugin struct {
 	logger            klog.Logger
 	fh                fwk.Handle
 	fts               feature.Features
+	preemptExecutor   *preemption.Executor
 	args              configv1.QuotaAwarePreemptionArgs
 }
 
 // Validate plugin implementation so multipoint configuration works as expected.
 var (
+	_ fwk.PreEnqueuePlugin    = (*Plugin)(nil)
 	_ fwk.PreFilterPlugin     = (*Plugin)(nil)
 	_ fwk.PreFilterExtensions = (*Plugin)(nil)
 	_ fwk.PostFilterPlugin    = (*Plugin)(nil)
@@ -110,6 +111,8 @@ func NewPlugin(ctx context.Context, rawArgs runtime.Object, fh fwk.Handle, fts f
 		queueSynchronizer: queueSynchronizer,
 		logger:            logger,
 		fh:                fh,
+		fts:               fts,
+		preemptExecutor:   preemption.NewExecutor(fh, fts),
 		args:              args,
 	}, nil
 }
@@ -117,6 +120,28 @@ func NewPlugin(ctx context.Context, rawArgs runtime.Object, fh fwk.Handle, fts f
 // Name returns name of the plugin.
 func (plugin *Plugin) Name() string {
 	return PluginName
+}
+
+// PreEnqueue implements [framework.PreEnqueuePlugin].
+func (plugin *Plugin) PreEnqueue(ctx context.Context, pod *corev1.Pod) *fwk.Status {
+	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger)).WithValues(
+		"extensionPoint", "PreEnqueue",
+		"pod", klog.KObj(pod))
+	logger.V(5).Info("Running PreEnqueue")
+
+	// When async preemption is not enabled, no need to gate pods that are preempting because
+	// a sync preemption cycle doesn't complete until preemption completes.
+	if !plugin.fts.EnableAsyncPreemption {
+		return nil
+	}
+
+	// If the pod is running preemption, gate from enqueue so it doesn't run preemption again.
+	if plugin.preemptExecutor.IsPodRunningPreemption(pod.GetUID()) {
+		logger.Info("Pod is already preempting, gating until completed")
+		return fwk.NewStatus(fwk.UnschedulableAndUnresolvable, "waiting for the preemption for this pod to be finished")
+	}
+
+	return nil
 }
 
 // PreFilter implements [framework.PreFilterPlugin].
@@ -129,7 +154,7 @@ func (plugin *Plugin) PreFilter(
 	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger)).WithValues(
 		"extensionPoint", "PreFilter",
 		"pod", klog.KObj(pod))
-	logger.Info("Running PreFilter")
+	logger.V(5).Info("Running PreFilter")
 
 	stateMgr := NewStateManager(state)
 	requestedRes := alloc.FromPodReq(pod)
@@ -189,39 +214,7 @@ func (plugin *Plugin) PreFilter(
 		"used", podQ.Quota().Used(),
 		"max", podQ.Quota().Max(),
 		"requestedRes", requestedRes)
-	exceedsQuota := podQ.Quota().WouldPutOverMax(requestedRes)
-	if len(pod.Status.NominatedNodeName) > 0 && exceedsQuota {
-		logger.Info("Pod with nominated node does not fit in quota, recomputing quota")
-
-		podIDsOnNode, err := kubesched.GetPodIDsOnNode(plugin.fh, pod.Status.NominatedNodeName)
-		if err != nil {
-			// Nominated node doesn't seem to exist anymore, so scheduling on this node
-			// is not possible and not resolvable by preemption.
-			return nil, fwk.NewStatus(fwk.UnschedulableAndUnresolvable,
-				fmt.Sprintf("Error getting pod IDs from nominated node %s: %v",
-					pod.Status.NominatedNodeName, err))
-		}
-
-		podQ.Quota().DeletePodsFunc(func(podToDelete *corev1.Pod) bool {
-			if podToDelete.Spec.NodeName != pod.Status.NominatedNodeName {
-				// Pod is not on the nominated node, don't remove from quota.
-				return false
-			}
-			if podIDsOnNode.Has(podToDelete.UID) {
-				// Pod is still valid, don't remove from quota.
-				return false
-			}
-
-			logger.Info("Removing pod from quota snapshot to keep in sync with cycle snapshot")
-			return true
-		})
-
-		exceedsQuota = podQ.Quota().WouldPutOverMax(requestedRes)
-		logger.Info("Synced pod's quota with snapshot",
-			"exceedsQuotaAfterSync", exceedsQuota)
-	}
-
-	if exceedsQuota {
+	if podQ.Quota().WouldPutOverMax(requestedRes) {
 		logger.Info("Pod does not fit in quota")
 
 		return nil, fwk.NewStatus(fwk.Unschedulable,
@@ -247,7 +240,7 @@ func (plugin *Plugin) PostFilter(
 	logger := klog.FromContext(klog.NewContext(ctx, plugin.logger)).WithValues(
 		"extensionPoint", "PostFilter",
 		"pod", klog.KObj(pod))
-	logger.Info("Running PostFilter")
+	logger.V(5).Info("Running PostFilter")
 
 	defer metrics.PreemptionAttempts.Inc()
 
@@ -260,7 +253,7 @@ func (plugin *Plugin) PostFilter(
 			cycleState: state,
 			cfg:        plugin.args.Preemption,
 		},
-		preemption.NewExecutor(plugin.fh, plugin.fts),
+		plugin.preemptExecutor,
 	)
 
 	result, status := evaluator.Preempt(ctx, state, pod, m)
@@ -283,6 +276,7 @@ func (plugin *Plugin) AddPod(
 		"extensionPoint", "AddPod",
 		"podToSchedule", klog.KObj(podToSchedule),
 		"podToAdd", klog.KObj(podInfoToAdd.GetPod()))
+	logger.V(5).Info("Running AddPod")
 
 	quotaSnapshot, err := NewStateManager(state).ReadQueueSnapshot()
 	if err != nil {
@@ -309,6 +303,7 @@ func (plugin *Plugin) RemovePod(
 		"extensionPoint", "RemovePod",
 		"podToSchedule", klog.KObj(podToSchedule),
 		"podToRemove", klog.KObj(podInfoToRemove.GetPod()))
+	logger.V(5).Info("Running RemovePod")
 
 	quotaSnapshot, err := NewStateManager(state).ReadQueueSnapshot()
 	if err != nil {

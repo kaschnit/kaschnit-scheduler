@@ -25,14 +25,14 @@ func Eventually(
 
 // EventuallyConfig is configuration for [Eventually] and related functions.
 type EventuallyConfig struct {
-	PollInterval time.Duration
 	Timeout      time.Duration
+	PollInterval time.Duration
 }
 
 func newEventuallyConfig(opts ...EventuallyConfigOpt) EventuallyConfig {
 	cfg := EventuallyConfig{
-		PollInterval: 250 * time.Millisecond,
 		Timeout:      3 * time.Second,
+		PollInterval: 250 * time.Millisecond,
 	}
 
 	for _, opt := range opts {

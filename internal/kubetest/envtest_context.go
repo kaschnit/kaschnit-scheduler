@@ -25,6 +25,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler"
 	kubeschedcfgapi "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	kubeschedq "k8s.io/kubernetes/pkg/scheduler/backend/queue"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/defaultpreemption"
 	fwkruntime "k8s.io/kubernetes/pkg/scheduler/framework/runtime"
 	"k8s.io/utils/clock"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -102,12 +103,12 @@ func NewSchedulerContext(ctx context.Context, k8sConfig *rest.Config) (*Schedule
 		return nil, err
 	}
 
-	apiGoupResources, err := restmapper.GetAPIGroupResources(k8sClient.Discovery())
+	apiGroupResources, err := restmapper.GetAPIGroupResources(k8sClient.Discovery())
 	if err != nil {
 		return nil, err
 	}
 
-	restMapper := restmapper.NewDiscoveryRESTMapper(apiGoupResources)
+	restMapper := restmapper.NewDiscoveryRESTMapper(apiGroupResources)
 
 	kwokClient, err := kwokclient.NewForConfig(k8sConfig)
 	if err != nil {
@@ -139,7 +140,7 @@ func NewSchedulerContext(ctx context.Context, k8sConfig *rest.Config) (*Schedule
 
 	nsName := "test-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	if _, err := k8sClient.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{Name: nsName},
+		Name: nsName,
 	}, metav1.CreateOptions{}); err != nil {
 		return nil, err
 	}
@@ -291,10 +292,8 @@ func newKubeScheduler(
 
 func newKubeSchedulerConfig() (kubeschedcfgapi.KubeSchedulerConfiguration, error) {
 	return kubesched.ToConfigAPIWithDefaults(kubeschedcfgv1.KubeSchedulerConfiguration{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: kubeschedcfgv1.SchemeGroupVersion.String(),
-			Kind:       "KubeSchedulerConfiguration",
-		},
+		APIVersion: kubeschedcfgv1.SchemeGroupVersion.String(),
+		Kind:       "KubeSchedulerConfiguration",
 		Profiles: []kubeschedcfgv1.KubeSchedulerProfile{
 			{
 				SchedulerName: new(SchedulerName),
@@ -303,13 +302,8 @@ func newKubeSchedulerConfig() (kubeschedcfgapi.KubeSchedulerConfiguration, error
 						Enabled: []kubeschedcfgv1.Plugin{
 							{Name: quotaawarepreempt.PluginName},
 						},
-					},
-					PostFilter: kubeschedcfgv1.PluginSet{
-						Enabled: []kubeschedcfgv1.Plugin{
-							{Name: quotaawarepreempt.PluginName},
-						},
 						Disabled: []kubeschedcfgv1.Plugin{
-							{Name: "*"},
+							{Name: defaultpreemption.Name},
 						},
 					},
 				},

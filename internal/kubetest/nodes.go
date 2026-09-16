@@ -18,11 +18,9 @@ import (
 
 func NewKWOKNode(name string) *corev1.Node {
 	return &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        name,
-			Annotations: map[string]string{"kwok.x-k8s.io/node": "fake"},
-			Labels:      map[string]string{"type": "kwok"},
-		},
+		Name:        name,
+		Annotations: map[string]string{"kwok.x-k8s.io/node": "fake"},
+		Labels:      map[string]string{"type": "kwok"},
 		Spec: corev1.NodeSpec{
 			ProviderID: "kwok://fake-node",
 			Taints:     []corev1.Taint{},

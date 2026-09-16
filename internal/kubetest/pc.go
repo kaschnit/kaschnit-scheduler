@@ -18,7 +18,7 @@ func NewPC(name string, value int32, preempt bool) *schedulingv1.PriorityClass {
 	}
 
 	return &schedulingv1.PriorityClass{
-		ObjectMeta:       metav1.ObjectMeta{Name: name},
+		Name:             name,
 		Value:            value,
 		PreemptionPolicy: &preemptionPolicy,
 	}

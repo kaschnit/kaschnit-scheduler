@@ -17,11 +17,6 @@ type PreemptsRule struct {
 	// An explicit empty selector indicates all pods in this queue can selected queues/pods.
 	// +optional
 	FromPods *metav1.LabelSelector `json:"fromPods,omitempty"`
-	// ToQueues are the queues that this queue can preempt.
-	// If this is omitted, no victim queues are selected.
-	// An explicit empty selector indicates the queue can preempt all queues.
-	// +optional
-	ToQueues *metav1.LabelSelector `json:"toQueues,omitempty"`
 	// ToPods are the pods within the selected queues that this queue can preempt.
 	// If this is omitted, this queue cannot preempt any pods from the selected queues.
 	// An explicit empty selector indicates this queue can preempt all pods in the selected queues.
@@ -30,11 +25,6 @@ type PreemptsRule struct {
 }
 
 type PreemptedByRule struct {
-	// FromQueues are the queues that can preempt this queue.
-	// If this is omitted, no queue can preempt this queue.
-	// An explicit empty selector indicates that this queue can be preempted by any queue.
-	// +optional
-	FromQueues *metav1.LabelSelector `json:"toQueues,omitempty"`
 	// FromPods are the pods within the selected queues that can preempt this queue.
 	// If this is omitted, no pods in the selected queues can preempt this queue.
 	// An explicit empty selector indicates all pods in the selected queues can preempt this queue.

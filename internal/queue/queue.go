@@ -220,7 +220,7 @@ func IsPreemptionAllowed(fromQ *Queue, fromPod *corev1.Pod, toQ *Queue, toPod *c
 	}
 
 	// Check if fromQ/fromPod matches toQ/toPod (egress / preempts rules).
-	checkEgress := func(toQLabels labels.Labels) bool {
+	checkEgress := func() bool {
 		// Only lock fromQ, because toQ is not accessed.
 		// Avoid locking both at the same time to prevent deadlock.
 		fromQ.lock.RLock()
@@ -238,10 +238,6 @@ func IsPreemptionAllowed(fromQ *Queue, fromPod *corev1.Pod, toQ *Queue, toPod *c
 		if !fromQ.preemptionCfg.preempts.fromPods.Matches(labels.Set(fromPod.Labels)) {
 			return false
 		}
-		// Can fromQ preempt toQ? (queue->queue egress)
-		if !fromQ.preemptionCfg.preempts.toQueues.Matches(toQLabels) {
-			return false
-		}
 		// Can fromQ preempt toPod? (queue->pod egress)
 		if !fromQ.preemptionCfg.preempts.toPods.Matches(labels.Set(toPod.Labels)) {
 			return false
@@ -251,7 +247,7 @@ func IsPreemptionAllowed(fromQ *Queue, fromPod *corev1.Pod, toQ *Queue, toPod *c
 	}
 
 	// Check if toQ/toPod matches fromQ/fromPod (ingress / preemptedBy rules).
-	checkIngress := func(fromQLabels labels.Labels) bool {
+	checkIngress := func() bool {
 		// Only lock toQ, because fromQ is not accessed.
 		// Avoid locking both at the same time to prevent deadlock.
 		toQ.lock.RLock()
@@ -269,10 +265,6 @@ func IsPreemptionAllowed(fromQ *Queue, fromPod *corev1.Pod, toQ *Queue, toPod *c
 		if !toQ.preemptionCfg.preemptedBy.toPods.Matches(labels.Set(toPod.Labels)) {
 			return false
 		}
-		// Can toQ be preempted by fromQ? (queue->queue ingress)
-		if !toQ.preemptionCfg.preemptedBy.fromQueues.Matches(fromQLabels) {
-			return false
-		}
 		// Can toQ be preempted by fromPod? (pod->queue ingress)
 		if !toQ.preemptionCfg.preemptedBy.fromPods.Matches(labels.Set(fromPod.Labels)) {
 			return false
@@ -281,5 +273,5 @@ func IsPreemptionAllowed(fromQ *Queue, fromPod *corev1.Pod, toQ *Queue, toPod *c
 	}
 
 	// Careful orchestration to avoid locking both queues at the same time.
-	return checkEgress(toQ.Labels()) && checkIngress(fromQ.Labels())
+	return checkEgress() && checkIngress()
 }

@@ -6,11 +6,8 @@ scheduler:
         multiPoint:
           enabled:
           - name: QuotaAwarePreemption
-        postFilter:
-          enabled:
-          - name: QuotaAwarePreemption
           disabled:
-          - name: "*"
+          - name: DefaultPreemption
       pluginConfig:
         quotaAwarePreemption:
           args: {}

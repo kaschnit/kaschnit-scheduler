@@ -363,9 +363,9 @@ func TestPlugin(t *testing.T) {
 			// It's not important which two, choice is arbitrary.
 			// That leaves 1 preemptor pod and 1 victim pod.
 			remainingPods, err := tCtx.PodMgr.List(t.Context(), metav1.ListOptions{})
-			require.NoError(t, err, "Failed to list pods")
-			assert.Len(t, remainingPods.Items, 2)
-			kassert.PodInPodListByUID(t, gotPreemptor, remainingPods)
+			require.NoError(c, err, "Failed to list pods")
+			assert.Len(c, remainingPods.Items, 2)
+			kassert.PodInPodListByUID(c, gotPreemptor, remainingPods)
 		})
 
 		// Perform scheduling for nominated node

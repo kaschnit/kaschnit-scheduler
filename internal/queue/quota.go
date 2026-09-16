@@ -29,7 +29,7 @@ func NewQuota(max alloc.Resources) *Quota {
 	return &Quota{
 		max:      max,
 		used:     make(alloc.Resources),
-		podsByID: immut.MakeMap[types.UID, *corev1.Pod](),
+		podsByID: immut.NewMap[types.UID, *corev1.Pod](),
 	}
 }
 
