@@ -7,36 +7,43 @@ import (
 	"github.com/kaschnit/kaschnit-scheduler/internal/match"
 )
 
-type PreemptionConfig struct {
-	preempts    preemptsRule
-	preemptedBy preemptedByRule
-}
-
 func NewPreemptionConfigFromSpec(spec schedv1.PreemptionSpec) (*PreemptionConfig, error) {
 	var errs error
 
-	preempts, err := makePreemptsRuleFromSpec(spec.Preempts)
+	preempts, err := makePreemptionRuleFromSpecRule(spec.Preempts)
 	if err != nil {
 		errs = errors.Join(errs, err)
 	}
 
-	preemptedBy, err := makePreemptedByRuleFromSpec(spec.PreemptedBy)
+	preemptedBy, err := makePreemptionRuleFromSpecRule(spec.PreemptedBy)
 	if err != nil {
 		errs = errors.Join(errs, err)
 	}
 
 	return &PreemptionConfig{
-		preempts:    preempts,
-		preemptedBy: preemptedBy,
+		Preempts:    PreemptsRule(preempts),
+		PreemptedBy: PreemptedByRule(preemptedBy),
 	}, errs
 }
 
-type preemptsRule struct {
-	fromPods match.LabelMatcher
-	toPods   match.LabelMatcher
+type PreemptionConfig struct {
+	Preempts    PreemptsRule
+	PreemptedBy PreemptedByRule
 }
 
-func makePreemptsRuleFromSpec(rule schedv1.PreemptsRule) (preemptsRule, error) {
+type PreemptsRule preemptionRule
+
+func (rule PreemptsRule) CanPreempt() bool {
+	return rule.FromPods != nil && rule.ToPods != nil
+}
+
+type PreemptedByRule preemptionRule
+
+func (rule PreemptedByRule) CanBePreempted() bool {
+	return rule.FromPods != nil && rule.ToPods != nil
+}
+
+func makePreemptionRuleFromSpecRule(rule schedv1.PreemptionRule) (preemptionRule, error) {
 	var errs error
 
 	fromPods, err := match.LabelSelectorAsMatcherOrNothing(rule.FromPods)
@@ -49,40 +56,13 @@ func makePreemptsRuleFromSpec(rule schedv1.PreemptsRule) (preemptsRule, error) {
 		errs = errors.Join(errs, err)
 	}
 
-	return preemptsRule{
-		fromPods: fromPods,
-		toPods:   toPods,
+	return preemptionRule{
+		FromPods: fromPods,
+		ToPods:   toPods,
 	}, errs
 }
 
-func (rule preemptsRule) canPreempt() bool {
-	return rule.fromPods != nil && rule.toPods != nil
-}
-
-type preemptedByRule struct {
-	fromPods match.LabelMatcher
-	toPods   match.LabelMatcher
-}
-
-func makePreemptedByRuleFromSpec(rule schedv1.PreemptedByRule) (preemptedByRule, error) {
-	var errs error
-
-	fromPods, err := match.LabelSelectorAsMatcherOrNothing(rule.FromPods)
-	if err != nil {
-		errs = errors.Join(errs, err)
-	}
-
-	toPods, err := match.LabelSelectorAsMatcherOrNothing(rule.ToPods)
-	if err != nil {
-		errs = errors.Join(errs, err)
-	}
-
-	return preemptedByRule{
-		fromPods: fromPods,
-		toPods:   toPods,
-	}, errs
-}
-
-func (rule preemptedByRule) canBePreempted() bool {
-	return rule.fromPods != nil && rule.toPods != nil
+type preemptionRule struct {
+	FromPods match.LabelMatcher
+	ToPods   match.LabelMatcher
 }

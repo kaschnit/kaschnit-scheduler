@@ -11,7 +11,7 @@ type QuotaSpec struct {
 	Max corev1.ResourceList `json:"max,omitempty"`
 }
 
-type PreemptsRule struct {
+type PreemptionRule struct {
 	// FromPods are the pods within this queue than can preempt the selected queues/pods.
 	// If this is omitted, this queue cannot preempt any selected queues/pods.
 	// An explicit empty selector indicates all pods in this queue can selected queues/pods.
@@ -24,25 +24,11 @@ type PreemptsRule struct {
 	ToPods *metav1.LabelSelector `json:"toPods,omitempty"`
 }
 
-type PreemptedByRule struct {
-	// FromPods are the pods within the selected queues that can preempt this queue.
-	// If this is omitted, no pods in the selected queues can preempt this queue.
-	// An explicit empty selector indicates all pods in the selected queues can preempt this queue.
-	// +optional
-	FromPods *metav1.LabelSelector `json:"fromPods,omitempty"`
-	// ToPods are the pods within this queue that can be preempted.
-	// If this is omitted, no pods in this queue can be preempted.
-	// An explicit empty selector indicates all pods in this queue can be preempted by the selected
-	// queues/pods.
-	// +optional
-	ToPods *metav1.LabelSelector `json:"toPods,omitempty"`
-}
-
 type PreemptionSpec struct {
 	// Preempts defines the criteria for what pods this queue's pods can preempt.
-	Preempts PreemptsRule `json:"preempts,omitempty"`
+	Preempts PreemptionRule `json:"preempts,omitempty"`
 	// PreemptedBy defines the criteria for what pods can preempt this queue's pods.
-	PreemptedBy PreemptedByRule `json:"preemptedBy,omitempty"`
+	PreemptedBy PreemptionRule `json:"preemptedBy,omitempty"`
 }
 
 type QueueSpec struct {

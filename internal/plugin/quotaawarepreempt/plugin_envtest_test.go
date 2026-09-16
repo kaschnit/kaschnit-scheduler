@@ -97,8 +97,8 @@ func TestPlugin(t *testing.T) {
 					},
 				},
 				Preemption: schedulingv1.PreemptionSpec{
-					Preempts:    schedulingv1.PreemptsEverything(),
-					PreemptedBy: schedulingv1.PreemptedByEverything(),
+					Preempts:    schedulingv1.PreemptionEverything(),
+					PreemptedBy: schedulingv1.PreemptionEverything(),
 				},
 			},
 		})
@@ -190,8 +190,8 @@ func TestPlugin(t *testing.T) {
 					},
 				},
 				Preemption: schedulingv1.PreemptionSpec{
-					Preempts:    schedulingv1.PreemptsEverything(),
-					PreemptedBy: schedulingv1.PreemptedByEverything(),
+					Preempts:    schedulingv1.PreemptionEverything(),
+					PreemptedBy: schedulingv1.PreemptionEverything(),
 				},
 			},
 		})
@@ -286,8 +286,8 @@ func TestPlugin(t *testing.T) {
 					},
 				},
 				Preemption: schedulingv1.PreemptionSpec{
-					Preempts:    schedulingv1.PreemptsEverything(),
-					PreemptedBy: schedulingv1.PreemptedByEverything(),
+					Preempts:    schedulingv1.PreemptionEverything(),
+					PreemptedBy: schedulingv1.PreemptionEverything(),
 				},
 			},
 		})

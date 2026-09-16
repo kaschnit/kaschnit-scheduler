@@ -78,12 +78,12 @@ func (q *Queue) CanPodPreemptOthers(pod *corev1.Pod) bool {
 	}
 
 	// Can q prempt at all?
-	if !q.preemptionCfg.preempts.canPreempt() {
+	if !q.preemptionCfg.Preempts.CanPreempt() {
 		return false
 	}
 
 	// Does q allow pod to preempt others?
-	if !q.preemptionCfg.preempts.fromPods.Matches(labels.Set(pod.Labels)) {
+	if !q.preemptionCfg.Preempts.FromPods.Matches(labels.Set(pod.Labels)) {
 		return false
 	}
 
@@ -107,12 +107,12 @@ func (q *Queue) CanPodBePreemptedByOthers(pod *corev1.Pod) bool {
 	}
 
 	// Can q be preempted at all?
-	if !q.preemptionCfg.preemptedBy.canBePreempted() {
+	if !q.preemptionCfg.PreemptedBy.CanBePreempted() {
 		return false
 	}
 
 	// Does q allow pod to be preempted by others?
-	if !q.preemptionCfg.preemptedBy.toPods.Matches(labels.Set(pod.Labels)) {
+	if !q.preemptionCfg.PreemptedBy.ToPods.Matches(labels.Set(pod.Labels)) {
 		return false
 	}
 
@@ -231,15 +231,15 @@ func IsPreemptionAllowed(fromQ *Queue, fromPod *corev1.Pod, toQ *Queue, toPod *c
 			return false
 		}
 		// Can fromQ preempt at all?
-		if !fromQ.preemptionCfg.preempts.canPreempt() {
+		if !fromQ.preemptionCfg.Preempts.CanPreempt() {
 			return false
 		}
 		// Does fromQ allow fromPod to preempt others?
-		if !fromQ.preemptionCfg.preempts.fromPods.Matches(labels.Set(fromPod.Labels)) {
+		if !fromQ.preemptionCfg.Preempts.FromPods.Matches(labels.Set(fromPod.Labels)) {
 			return false
 		}
 		// Can fromQ preempt toPod? (queue->pod egress)
-		if !fromQ.preemptionCfg.preempts.toPods.Matches(labels.Set(toPod.Labels)) {
+		if !fromQ.preemptionCfg.Preempts.ToPods.Matches(labels.Set(toPod.Labels)) {
 			return false
 		}
 
@@ -258,15 +258,15 @@ func IsPreemptionAllowed(fromQ *Queue, fromPod *corev1.Pod, toQ *Queue, toPod *c
 			return false
 		}
 		// Can toQ be preempted at all?
-		if !toQ.preemptionCfg.preemptedBy.canBePreempted() {
+		if !toQ.preemptionCfg.PreemptedBy.CanBePreempted() {
 			return false
 		}
 		// Does toQ allow toPod be preempted?
-		if !toQ.preemptionCfg.preemptedBy.toPods.Matches(labels.Set(toPod.Labels)) {
+		if !toQ.preemptionCfg.PreemptedBy.ToPods.Matches(labels.Set(toPod.Labels)) {
 			return false
 		}
 		// Can toQ be preempted by fromPod? (pod->queue ingress)
-		if !toQ.preemptionCfg.preemptedBy.fromPods.Matches(labels.Set(fromPod.Labels)) {
+		if !toQ.preemptionCfg.PreemptedBy.FromPods.Matches(labels.Set(fromPod.Labels)) {
 			return false
 		}
 		return true
