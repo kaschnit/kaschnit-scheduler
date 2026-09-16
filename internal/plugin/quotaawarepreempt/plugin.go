@@ -361,6 +361,7 @@ func (plugin *Plugin) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWit
 				return fwk.Queue, nil
 			},
 		},
+		// Changes to a queue may cause previously unschedulable pods to become schedulable.
 		{
 			Event: fwk.ClusterEvent{
 				Resource:   fwk.EventResource(schedv1.QueueFQRN),
